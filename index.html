@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
@@ -16,17 +15,19 @@
         .match-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .admin-only { display: none; }
+        .super-admin-only { display: none; }
         body.admin-mode .admin-only { display: flex; }
+        body.super-admin-mode .super-admin-only { display: block; }
         body.admin-mode .viewer-only { display: none; }
-        .toast { transition: opacity 0.3s ease; }
-        .live-badge {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
+        body.super-admin-mode .viewer-only { display: none; }
+        .toast { transition: opacity 0.3s ease; position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
+        .live-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .role-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+        .role-super { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
+        .role-admin { background: linear-gradient(135deg, #60a5fa, #3b82f6); color: white; }
+        .login-card { transition: all 0.3s ease; }
+        .login-card:hover { transform: translateY(-2px); }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -47,10 +48,11 @@
             <!-- Auth Controls -->
             <div id="authControls" class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border">
                 <div id="userInfo" class="text-sm text-gray-600 hidden mr-2">
-                    👤 <span id="userEmail" class="font-medium"></span>
+                    👤 <span id="userName" class="font-medium"></span>
+                    <span id="userRoleBadge" class="role-badge ml-2"></span>
                 </div>
                 <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
-                    🔐 Admin Login
+                    🔐 Login
                 </button>
                 <button id="logoutBtn" onclick="logout()" class="hidden px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-bold transition-colors">
                     🚪 Logout
@@ -106,10 +108,13 @@
                     </div>
                 </div>
                 
-                <!-- Reset Data (Admin Only) -->
-                <div class="admin-only mt-4">
-                    <button onclick="resetAllScores()" class="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-bold transition-colors border border-red-200">
+                <!-- Super Admin Only Controls -->
+                <div class="super-admin-only mt-4 space-y-2">
+                    <button onclick="resetAllScores()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-colors">
                         🗑️ Reset All Scores
+                    </button>
+                    <button onclick="clearAllData()" class="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-bold transition-colors">
+                        ⚠️ Clear Entire Database
                     </button>
                 </div>
             </div>
@@ -118,43 +123,38 @@
 
     <!-- Login Modal -->
     <div id="loginModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">🔐 Admin Login</h3>
-            <input type="email" id="loginEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
-            <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl login-card">
+            <h3 class="text-xl font-bold mb-4 text-center">🔐 Login to Edit Scores</h3>
+            
+            <div class="space-y-3 mb-4">
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                    <div class="font-bold text-amber-800">⭐ Super Admin</div>
+                    <div class="text-sm text-amber-600">Password: <span class="font-mono font-bold">10</span></div>
+                    <div class="text-xs text-amber-500 mt-1">Full access + Reset/Clear data</div>
+                </div>
+                
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                    <div class="font-bold text-blue-800">👑 Admin</div>
+                    <div class="text-sm text-blue-600">Password: <span class="font-mono font-bold">30</span></div>
+                    <div class="text-xs text-blue-500 mt-1">Can update scores only</div>
+                </div>
+            </div>
+            
+            <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl font-mono" placeholder="Enter password..." autocomplete="off">
+            
             <div class="flex gap-2">
                 <button onclick="closeLoginModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200 transition">Cancel</button>
-                <button onclick="loginWithEmail()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
+                <button onclick="checkPasswordLogin()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
             </div>
-            <p id="loginError" class="text-red-500 text-xs mt-2 hidden"></p>
-            <hr class="my-4">
-            <button onclick="showSignupModal()" class="w-full text-center text-sm text-blue-600 hover:text-blue-700">
-                Don't have an account? Sign up
-            </button>
-        </div>
-    </div>
-
-    <!-- Signup Modal -->
-    <div id="signupModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">📝 Create Admin Account</h3>
-            <input type="email" id="signupEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
-            <input type="password" id="signupPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password (min 6 chars)">
-            <div class="flex gap-2">
-                <button onclick="closeSignupModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200 transition">Cancel</button>
-                <button onclick="signup()" class="flex-1 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition">Sign Up</button>
-            </div>
-            <p id="signupError" class="text-red-500 text-xs mt-2 hidden"></p>
+            <p id="loginError" class="text-red-500 text-xs mt-2 hidden text-center">Incorrect password. Try again.</p>
         </div>
     </div>
 
     <!-- Toast Notification -->
-    <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm hidden toast z-50">
-        🔄 Updating...
-    </div>
+    <div id="toast" class="toast hidden bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm"></div>
 
     <script>
-        // ========== YOUR CORRECT FIREBASE CONFIG ==========
+        // ========== FIREBASE CONFIG (YOUR EXISTING CONFIG) ==========
         const firebaseConfig = {
             apiKey: "AIzaSyBPkmaWLWad7Vn5RzlnZv-mLZgMaHv7xIg",
             authDomain: "e-war-5f8a6.firebaseapp.com",
@@ -168,9 +168,12 @@
 
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
         const database = firebase.database();
 
+        // ========== PASSWORD CONFIGURATION ==========
+        const SUPER_ADMIN_PASSWORD = "10";
+        const ADMIN_PASSWORD = "30";
+        
         // ========== TOURNAMENT DATA ==========
         const players = ["Shammas", "Ameen", "Suhail", "Aslah", "Nisam", "Fadhil", "Yaseen", "Shahul", "Mirshad", "Fathah"];
         
@@ -188,79 +191,105 @@
 
         let scores = {};
         let currentUser = null;
+        let currentRole = null; // 'super' or 'admin'
         let isUpdating = false;
 
-        // ========== AUTH FUNCTIONS ==========
+        // ========== AUTH FUNCTIONS (Password-based) ==========
         function showLoginModal() { 
             document.getElementById('loginModal').style.display = 'flex';
-            document.getElementById('loginEmail').focus();
+            document.getElementById('loginPassword').value = '';
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginPassword').focus();
         }
         
         function closeLoginModal() { 
             document.getElementById('loginModal').style.display = 'none';
-            document.getElementById('loginError').classList.add('hidden');
-            document.getElementById('loginEmail').value = '';
-            document.getElementById('loginPassword').value = '';
-        }
-        
-        function showSignupModal() {
-            closeLoginModal();
-            document.getElementById('signupModal').style.display = 'flex';
-        }
-        
-        function closeSignupModal() {
-            document.getElementById('signupModal').style.display = 'none';
-            document.getElementById('signupError').classList.add('hidden');
-            document.getElementById('signupEmail').value = '';
-            document.getElementById('signupPassword').value = '';
         }
 
-        async function loginWithEmail() {
-            const email = document.getElementById('loginEmail').value;
+        function checkPasswordLogin() {
             const password = document.getElementById('loginPassword').value;
             const errorDiv = document.getElementById('loginError');
             
-            try {
-                await auth.signInWithEmailAndPassword(email, password);
+            if (password === SUPER_ADMIN_PASSWORD) {
+                currentRole = 'super';
+                currentUser = { name: 'Super Admin', role: 'super' };
+                sessionStorage.setItem('tournament_role', 'super');
+                sessionStorage.setItem('tournament_user', 'Super Admin');
                 closeLoginModal();
-                showToast('✅ Logged in as admin!', 'success');
-            } catch (error) {
-                errorDiv.textContent = error.message;
+                updateAuthUI();
+                showToast('✅ Logged in as SUPER ADMIN! You have full control.', 'success');
+            } 
+            else if (password === ADMIN_PASSWORD) {
+                currentRole = 'admin';
+                currentUser = { name: 'Admin', role: 'admin' };
+                sessionStorage.setItem('tournament_role', 'admin');
+                sessionStorage.setItem('tournament_user', 'Admin');
+                closeLoginModal();
+                updateAuthUI();
+                showToast('✅ Logged in as ADMIN. You can update scores.', 'success');
+            } 
+            else {
                 errorDiv.classList.remove('hidden');
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('loginPassword').focus();
             }
         }
 
-        async function signup() {
-            const email = document.getElementById('signupEmail').value;
-            const password = document.getElementById('signupPassword').value;
-            const errorDiv = document.getElementById('signupError');
-            
-            if (password.length < 6) {
-                errorDiv.textContent = 'Password must be at least 6 characters';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
-            
-            try {
-                await auth.createUserWithEmailAndPassword(email, password);
-                closeSignupModal();
-                showToast('✅ Account created! You can now edit scores.', 'success');
-            } catch (error) {
-                errorDiv.textContent = error.message;
-                errorDiv.classList.remove('hidden');
-            }
-        }
-
-        async function logout() {
-            await auth.signOut();
+        function logout() {
+            currentRole = null;
+            currentUser = null;
+            sessionStorage.removeItem('tournament_role');
+            sessionStorage.removeItem('tournament_user');
+            updateAuthUI();
             showToast('👋 Logged out', 'info');
+        }
+
+        function updateAuthUI() {
+            const savedRole = sessionStorage.getItem('tournament_role');
+            if (savedRole === 'super') {
+                currentRole = 'super';
+                currentUser = { name: 'Super Admin', role: 'super' };
+            } else if (savedRole === 'admin') {
+                currentRole = 'admin';
+                currentUser = { name: 'Admin', role: 'admin' };
+            }
+            
+            const loginBtn = document.getElementById('loginBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const userInfo = document.getElementById('userInfo');
+            const userNameSpan = document.getElementById('userName');
+            const userRoleBadge = document.getElementById('userRoleBadge');
+            
+            if (currentRole) {
+                loginBtn.classList.add('hidden');
+                logoutBtn.classList.remove('hidden');
+                userInfo.classList.remove('hidden');
+                userNameSpan.textContent = currentUser.name;
+                
+                if (currentRole === 'super') {
+                    userRoleBadge.textContent = '⭐ SUPER ADMIN';
+                    userRoleBadge.className = 'role-badge role-super ml-2';
+                    document.body.classList.add('super-admin-mode');
+                    document.body.classList.remove('admin-mode');
+                } else {
+                    userRoleBadge.textContent = '👑 ADMIN';
+                    userRoleBadge.className = 'role-badge role-admin ml-2';
+                    document.body.classList.add('admin-mode');
+                    document.body.classList.remove('super-admin-mode');
+                }
+            } else {
+                loginBtn.classList.remove('hidden');
+                logoutBtn.classList.add('hidden');
+                userInfo.classList.add('hidden');
+                document.body.classList.remove('admin-mode', 'super-admin-mode');
+            }
+            renderMatches();
         }
 
         // ========== REALTIME DATABASE SYNC ==========
         function setupRealtimeSync() {
             const scoresRef = database.ref('tournament/scores');
             
-            // Listen for real-time changes from Firebase
             scoresRef.on('value', (snapshot) => {
                 if (!isUpdating) {
                     const data = snapshot.val();
@@ -268,32 +297,28 @@
                     renderMatches();
                     updateTable();
                     
-                    // Show notification for viewers when scores change
-                    if (!currentUser) {
-                        showToast('🔄 Scores updated by admin!', 'info');
+                    if (!currentRole) {
+                        showToast('🔄 Scores updated!', 'info');
                     }
                 }
             });
             
-            // Show live status
             document.getElementById('liveStatus').classList.remove('hidden');
         }
 
         async function saveScoreToRealtimeDB(matchId, playerKey, value) {
-            if (!currentUser) {
+            if (!currentRole) {
                 showToast('❌ Please login to update scores', 'error');
-                renderMatches(); // Reset the input
+                renderMatches();
                 return false;
             }
             
             isUpdating = true;
             
-            // Update local scores first for immediate feedback
             if (!scores[matchId]) scores[matchId] = { s1: '', s2: '' };
             scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
             
             try {
-                // Save to Firebase Realtime Database
                 await database.ref('tournament/scores').set(scores);
                 showToast('✅ Score saved! Everyone can see it now.', 'success');
                 return true;
@@ -307,12 +332,12 @@
         }
 
         async function resetAllScores() {
-            if (!currentUser) {
-                showToast('❌ Login required to reset scores', 'error');
+            if (currentRole !== 'super') {
+                showToast('❌ Only SUPER ADMIN can reset scores!', 'error');
                 return;
             }
             
-            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score and cannot be undone. Everyone will see the empty scores immediately.')) {
+            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score. Everyone will see empty scores immediately.')) {
                 isUpdating = true;
                 try {
                     await database.ref('tournament/scores').set({});
@@ -328,6 +353,33 @@
             }
         }
 
+        async function clearAllData() {
+            if (currentRole !== 'super') {
+                showToast('❌ Only SUPER ADMIN can clear data!', 'error');
+                return;
+            }
+            
+            if (confirm('⚠️⚠️⚠️ DESTROY ALL DATA ⚠️⚠️⚠️\n\nThis will completely wipe the entire database. This action CANNOT be undone!\n\nType "DELETE" to confirm:')) {
+                const confirmation = prompt('Type "DELETE" to confirm wiping all data:');
+                if (confirmation === 'DELETE') {
+                    isUpdating = true;
+                    try {
+                        await database.ref('tournament').remove();
+                        scores = {};
+                        renderMatches();
+                        updateTable();
+                        showToast('💀 All data has been permanently deleted!', 'error');
+                    } catch (error) {
+                        showToast('❌ Failed to clear: ' + error.message, 'error');
+                    } finally {
+                        isUpdating = false;
+                    }
+                } else {
+                    showToast('Operation cancelled', 'info');
+                }
+            }
+        }
+
         // ========== UI FUNCTIONS ==========
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
@@ -339,30 +391,7 @@
             }, 2500);
         }
 
-        function updateAuthUI(user) {
-            currentUser = user;
-            const loginBtn = document.getElementById('loginBtn');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const userInfo = document.getElementById('userInfo');
-            const userEmailSpan = document.getElementById('userEmail');
-            
-            if (user) {
-                loginBtn.classList.add('hidden');
-                logoutBtn.classList.remove('hidden');
-                userInfo.classList.remove('hidden');
-                userEmailSpan.textContent = user.email;
-                document.body.classList.add('admin-mode');
-            } else {
-                loginBtn.classList.remove('hidden');
-                logoutBtn.classList.add('hidden');
-                userInfo.classList.add('hidden');
-                document.body.classList.remove('admin-mode');
-            }
-            renderMatches();
-        }
-
         function init() {
-            // Setup matchday select
             const select = document.getElementById('matchdaySelect');
             for(let i = 1; i <= 9; i++) {
                 let opt = document.createElement('option');
@@ -371,12 +400,7 @@
                 select.appendChild(opt);
             }
             
-            // Auth state listener
-            auth.onAuthStateChanged((user) => {
-                updateAuthUI(user);
-            });
-            
-            // Setup real-time sync
+            updateAuthUI();
             setupRealtimeSync();
         }
 
@@ -482,12 +506,10 @@
         // Make functions globally available
         window.saveScoreToRealtimeDB = saveScoreToRealtimeDB;
         window.resetAllScores = resetAllScores;
+        window.clearAllData = clearAllData;
         window.showLoginModal = showLoginModal;
         window.closeLoginModal = closeLoginModal;
-        window.showSignupModal = showSignupModal;
-        window.closeSignupModal = closeSignupModal;
-        window.loginWithEmail = loginWithEmail;
-        window.signup = signup;
+        window.checkPasswordLogin = checkPasswordLogin;
         window.logout = logout;
         window.renderMatches = renderMatches;
 
