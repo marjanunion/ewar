@@ -28,6 +28,28 @@
         .role-admin { background: linear-gradient(135deg, #60a5fa, #3b82f6); color: white; }
         .login-card { transition: all 0.3s ease; }
         .login-card:hover { transform: translateY(-2px); }
+        /* Password change panel styles */
+        .password-panel {
+            background: #fef9e3;
+            border: 1px solid #fde047;
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            transition: all 0.2s;
+        }
+        .password-panel input {
+            font-size: 0.9rem;
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+        }
+        .toggle-panel-btn {
+            background: #f3f4f6;
+            transition: all 0.2s;
+        }
+        .toggle-panel-btn:hover {
+            background: #e5e7eb;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -108,36 +130,46 @@
                     </div>
                 </div>
                 
-                <!-- Super Admin Only Controls -->
-                <div class="super-admin-only mt-4 space-y-2">
+                <!-- Super Admin Only Controls + Password Change Panel -->
+                <div class="super-admin-only mt-4 space-y-3">
                     <button onclick="resetAllScores()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-colors">
                         🗑️ Reset All Scores
                     </button>
                     <button onclick="clearAllData()" class="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-bold transition-colors">
                         ⚠️ Clear Entire Database
                     </button>
+                    
+                    <!-- Password Change Panel For Super Admin -->
+                    <div id="passwordChangePanel" class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <button id="togglePasswordPanelBtn" onclick="togglePasswordPanel()" class="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left font-semibold text-gray-700 text-sm">
+                            <span>🔐 Change Super Admin Password</span>
+                            <svg id="panelArrow" class="w-4 h-4 transition-transform transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                        <div id="passwordChangeForm" class="hidden p-4 border-t border-gray-200 bg-white space-y-3">
+                            <input type="password" id="oldPasswordInput" placeholder="Current password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="password" id="newPasswordInput" placeholder="New password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="password" id="confirmPasswordInput" placeholder="Confirm new password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <button onclick="changeSuperAdminPassword()" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                                Update Password
+                            </button>
+                            <p id="passwordChangeMsg" class="text-xs text-center hidden"></p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Login Modal -->
+    <!-- Login Modal (Hints Removed) -->
     <div id="loginModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl login-card">
-            <h3 class="text-xl font-bold mb-4 text-center">🔐 Login to Edit Scores</h3>
+            <h3 class="text-xl font-bold mb-4 text-center">🔐 Admin Access</h3>
             
-            <div class="space-y-3 mb-4">
-                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-                    <div class="font-bold text-amber-800">⭐ Super Admin</div>
-                    <div class="text-sm text-amber-600">Password: <span class="font-mono font-bold">10</span></div>
-                    <div class="text-xs text-amber-500 mt-1">Full access + Reset/Clear data</div>
-                </div>
-                
-                <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
-                    <div class="font-bold text-blue-800">👑 Admin</div>
-                    <div class="text-sm text-blue-600">Password: <span class="font-mono font-bold">30</span></div>
-                    <div class="text-xs text-blue-500 mt-1">Can update scores only</div>
-                </div>
+            <!-- Password hints completely removed as requested -->
+            <div class="mb-4 text-center text-gray-500 text-xs">
+                <span>Enter credentials to continue</span>
             </div>
             
             <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl font-mono" placeholder="Enter password..." autocomplete="off">
@@ -154,7 +186,7 @@
     <div id="toast" class="toast hidden bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm"></div>
 
     <script>
-        // ========== FIREBASE CONFIG (YOUR EXISTING CONFIG) ==========
+        // ========== FIREBASE CONFIG ==========
         const firebaseConfig = {
             apiKey: "AIzaSyBPkmaWLWad7Vn5RzlnZv-mLZgMaHv7xIg",
             authDomain: "e-war-5f8a6.firebaseapp.com",
@@ -166,13 +198,56 @@
             measurementId: "G-JKCQKF6FY7"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // ========== PASSWORD CONFIGURATION ==========
-        const SUPER_ADMIN_PASSWORD = "10";
-        const ADMIN_PASSWORD = "30";
+        // ========== PASSWORD MANAGEMENT ==========
+        // Default passwords (they will be overwritten by Firebase if stored)
+        let SUPER_ADMIN_PASSWORD = "10";
+        let ADMIN_PASSWORD = "30";
+        
+        // Store passwords in Firebase under 'tournament/config' so they persist after page refresh
+        async function loadPasswordsFromFirebase() {
+            const configRef = database.ref('tournament/config');
+            try {
+                const snapshot = await configRef.once('value');
+                const config = snapshot.val();
+                if (config) {
+                    if (config.superAdminPassword) SUPER_ADMIN_PASSWORD = config.superAdminPassword;
+                    if (config.adminPassword) ADMIN_PASSWORD = config.adminPassword;
+                } else {
+                    // Initialize with defaults if not exist
+                    await configRef.set({
+                        superAdminPassword: SUPER_ADMIN_PASSWORD,
+                        adminPassword: ADMIN_PASSWORD
+                    });
+                }
+                console.log("Passwords loaded from secure storage");
+            } catch (error) {
+                console.error("Error loading passwords:", error);
+                showToast("⚠️ Could not load security config", "error");
+            }
+        }
+        
+        async function updateSuperAdminPassword(oldPwd, newPwd) {
+            if (oldPwd !== SUPER_ADMIN_PASSWORD) {
+                return { success: false, message: "Current password is incorrect" };
+            }
+            if (!newPwd || newPwd.trim() === "") {
+                return { success: false, message: "New password cannot be empty" };
+            }
+            if (newPwd === oldPwd) {
+                return { success: false, message: "New password must be different from current" };
+            }
+            try {
+                await database.ref('tournament/config/superAdminPassword').set(newPwd);
+                SUPER_ADMIN_PASSWORD = newPwd;
+                return { success: true, message: "Super Admin password updated successfully!" };
+            } catch (error) {
+                console.error(error);
+                return { success: false, message: "Database error: could not save new password" };
+            }
+        }
         
         // ========== TOURNAMENT DATA ==========
         const players = ["Shammas", "Ameen", "Suhail", "Aslah", "Nisam", "Fadhil", "Yaseen", "Shahul", "Mirshad", "Fathah"];
@@ -191,10 +266,10 @@
 
         let scores = {};
         let currentUser = null;
-        let currentRole = null; // 'super' or 'admin'
+        let currentRole = null;
         let isUpdating = false;
 
-        // ========== AUTH FUNCTIONS (Password-based) ==========
+        // ========== AUTH FUNCTIONS ==========
         function showLoginModal() { 
             document.getElementById('loginModal').style.display = 'flex';
             document.getElementById('loginPassword').value = '';
@@ -217,7 +292,7 @@
                 sessionStorage.setItem('tournament_user', 'Super Admin');
                 closeLoginModal();
                 updateAuthUI();
-                showToast('✅ Logged in as SUPER ADMIN! You have full control.', 'success');
+                showToast('✅ Logged in as SUPER ADMIN! Full access granted.', 'success');
             } 
             else if (password === ADMIN_PASSWORD) {
                 currentRole = 'admin';
@@ -286,23 +361,20 @@
             renderMatches();
         }
 
-        // ========== REALTIME DATABASE SYNC ==========
+        // ========== REALTIME SYNC ==========
         function setupRealtimeSync() {
             const scoresRef = database.ref('tournament/scores');
-            
             scoresRef.on('value', (snapshot) => {
                 if (!isUpdating) {
                     const data = snapshot.val();
                     scores = data || {};
                     renderMatches();
                     updateTable();
-                    
                     if (!currentRole) {
                         showToast('🔄 Scores updated!', 'info');
                     }
                 }
             });
-            
             document.getElementById('liveStatus').classList.remove('hidden');
         }
 
@@ -312,18 +384,14 @@
                 renderMatches();
                 return false;
             }
-            
             isUpdating = true;
-            
             if (!scores[matchId]) scores[matchId] = { s1: '', s2: '' };
             scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
-            
             try {
                 await database.ref('tournament/scores').set(scores);
-                showToast('✅ Score saved! Everyone can see it now.', 'success');
+                showToast('✅ Score saved! Live update complete.', 'success');
                 return true;
             } catch (error) {
-                console.error('Error saving:', error);
                 showToast('❌ Failed to save: ' + error.message, 'error');
                 return false;
             } finally {
@@ -336,8 +404,7 @@
                 showToast('❌ Only SUPER ADMIN can reset scores!', 'error');
                 return;
             }
-            
-            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score. Everyone will see empty scores immediately.')) {
+            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score.')) {
                 isUpdating = true;
                 try {
                     await database.ref('tournament/scores').set({});
@@ -358,7 +425,6 @@
                 showToast('❌ Only SUPER ADMIN can clear data!', 'error');
                 return;
             }
-            
             if (confirm('⚠️⚠️⚠️ DESTROY ALL DATA ⚠️⚠️⚠️\n\nThis will completely wipe the entire database. This action CANNOT be undone!\n\nType "DELETE" to confirm:')) {
                 const confirmation = prompt('Type "DELETE" to confirm wiping all data:');
                 if (confirmation === 'DELETE') {
@@ -366,6 +432,7 @@
                     try {
                         await database.ref('tournament').remove();
                         scores = {};
+                        await loadPasswordsFromFirebase(); // re-initialize config after wipe
                         renderMatches();
                         updateTable();
                         showToast('💀 All data has been permanently deleted!', 'error');
@@ -379,8 +446,62 @@
                 }
             }
         }
+        
+        // Password Change Handler for Super Admin
+        async function changeSuperAdminPassword() {
+            if (currentRole !== 'super') {
+                showToast('❌ Only Super Admin can change the password', 'error');
+                return;
+            }
+            const oldPwd = document.getElementById('oldPasswordInput').value;
+            const newPwd = document.getElementById('newPasswordInput').value;
+            const confirmPwd = document.getElementById('confirmPasswordInput').value;
+            const msgDiv = document.getElementById('passwordChangeMsg');
+            
+            if (!oldPwd || !newPwd || !confirmPwd) {
+                msgDiv.textContent = "⚠️ All fields are required";
+                msgDiv.classList.remove('hidden');
+                msgDiv.classList.add('text-red-600');
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                msgDiv.textContent = "❌ New passwords do not match";
+                msgDiv.classList.remove('hidden');
+                msgDiv.classList.add('text-red-600');
+                return;
+            }
+            const result = await updateSuperAdminPassword(oldPwd, newPwd);
+            if (result.success) {
+                msgDiv.textContent = "✅ " + result.message;
+                msgDiv.classList.remove('hidden');
+                msgDiv.classList.add('text-green-600');
+                document.getElementById('oldPasswordInput').value = '';
+                document.getElementById('newPasswordInput').value = '';
+                document.getElementById('confirmPasswordInput').value = '';
+                setTimeout(() => {
+                    msgDiv.classList.add('hidden');
+                }, 3000);
+                showToast(result.message, 'success');
+            } else {
+                msgDiv.textContent = "❌ " + result.message;
+                msgDiv.classList.remove('hidden');
+                msgDiv.classList.add('text-red-600');
+            }
+        }
+        
+        function togglePasswordPanel() {
+            const formDiv = document.getElementById('passwordChangeForm');
+            const arrow = document.getElementById('panelArrow');
+            if (formDiv.classList.contains('hidden')) {
+                formDiv.classList.remove('hidden');
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                formDiv.classList.add('hidden');
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
 
-        // ========== UI FUNCTIONS ==========
+        // ========== UI RENDER ==========
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
             const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔄';
@@ -389,19 +510,6 @@
             setTimeout(() => {
                 toast.classList.add('hidden');
             }, 2500);
-        }
-
-        function init() {
-            const select = document.getElementById('matchdaySelect');
-            for(let i = 1; i <= 9; i++) {
-                let opt = document.createElement('option');
-                opt.value = i;
-                opt.innerHTML = `Matchday ${i}`;
-                select.appendChild(opt);
-            }
-            
-            updateAuthUI();
-            setupRealtimeSync();
         }
 
         function renderMatches() {
@@ -414,7 +522,6 @@
                 const matchId = `${day}-${index}`;
                 const s1 = scores[matchId]?.s1 ?? '';
                 const s2 = scores[matchId]?.s2 ?? '';
-                
                 const isPlayed = s1 !== '' && s2 !== '';
                 const scoreDisplay = isPlayed ? `${s1} - ${s2}` : 'vs';
 
@@ -451,17 +558,13 @@
                 const [day, index] = matchId.split('-');
                 const match = fixtures[day]?.[parseInt(index)];
                 const s = scores[matchId];
-
-                if (match && s && s.s1 !== '' && s.s2 !== '' && s.s1 !== null && s.s2 !== null && !isNaN(s.s1) && !isNaN(s.s2)) {
+                if (match && s && s.s1 !== '' && s.s2 !== '' && !isNaN(s.s1) && !isNaN(s.s2)) {
                     const p1 = match[0];
                     const p2 = match[1];
-
                     stats[p1].played++;
                     stats[p2].played++;
-                    
                     stats[p1].gd += (s.s1 - s.s2);
                     stats[p2].gd += (s.s2 - s.s1);
-
                     if (s.s1 > s.s2) {
                         stats[p1].w++; stats[p1].pts += 3;
                         stats[p2].l++;
@@ -482,12 +585,10 @@
             });
             
             const tbody = document.getElementById('pointsTableBody');
-            if (!tbody) return;
             tbody.innerHTML = '';
             sortedPlayers.forEach((p, idx) => {
                 const s = stats[p];
-                const row = `
-                    <tr class="bg-white hover:bg-blue-50 transition-colors">
+                const row = `<tr class="bg-white hover:bg-blue-50 transition-colors">
                         <td class="px-4 py-4 flex items-center gap-3">
                             <span class="text-xs text-gray-400 font-mono w-4">${idx + 1}</span>
                             <span class="font-bold text-gray-900">${p}</span>
@@ -497,13 +598,24 @@
                         <td class="px-2 py-4 text-center font-bold text-amber-500">${s.d}</td>
                         <td class="px-2 py-4 text-center font-bold text-red-500">${s.l}</td>
                         <td class="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/50">${s.pts}</td>
-                    </tr>
-                `;
+                     </tr>`;
                 tbody.innerHTML += row;
             });
         }
 
-        // Make functions globally available
+        async function init() {
+            await loadPasswordsFromFirebase();
+            const select = document.getElementById('matchdaySelect');
+            for(let i = 1; i <= 9; i++) {
+                let opt = document.createElement('option');
+                opt.value = i;
+                opt.innerHTML = `Matchday ${i}`;
+                select.appendChild(opt);
+            }
+            updateAuthUI();
+            setupRealtimeSync();
+        }
+
         window.saveScoreToRealtimeDB = saveScoreToRealtimeDB;
         window.resetAllScores = resetAllScores;
         window.clearAllData = clearAllData;
@@ -512,8 +624,9 @@
         window.checkPasswordLogin = checkPasswordLogin;
         window.logout = logout;
         window.renderMatches = renderMatches;
+        window.changeSuperAdminPassword = changeSuperAdminPassword;
+        window.togglePasswordPanel = togglePasswordPanel;
 
-        // Start the app
         init();
     </script>
 </body>
