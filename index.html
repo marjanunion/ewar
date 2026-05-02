@@ -2,185 +2,174 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏆 Tournament Manager - Live Scores</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>🏆 Ultimate Tournament Manager | Live Scores & Standings</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        .match-card { transition: all 0.2s ease; }
-        .match-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .admin-only { display: none; }
-        .super-admin-only { display: none; }
-        body.admin-mode .admin-only { display: flex; }
-        body.super-admin-mode .super-admin-only { display: block; }
-        body.admin-mode .viewer-only { display: none; }
-        body.super-admin-mode .viewer-only { display: none; }
-        .toast { transition: opacity 0.3s ease; position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
-        .live-badge { animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
-        .role-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
-        .role-super { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
-        .role-admin { background: linear-gradient(135deg, #60a5fa, #3b82f6); color: white; }
-        .login-card { transition: all 0.3s ease; }
-        .error-panel { background: #fee2e2; border-left: 4px solid #dc2626; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; }
+        .match-card { transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
+        .match-card:hover { transform: translateY(-3px); box-shadow: 0 20px 25px -12px rgba(0,0,0,0.1); }
+        .admin-only, .super-admin-only { display: none; }
+        body.admin-mode .admin-only { display: inline-flex !important; }
+        body.super-admin-mode .super-admin-only { display: block !important; }
+        body.admin-mode .viewer-only { display: none !important; }
+        body.super-admin-mode .viewer-only { display: none !important; }
+        .toast { transition: opacity 0.2s, transform 0.2s; transform: translateY(0); }
+        .live-badge { animation: softPulse 1.8s infinite; }
+        @keyframes softPulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
+        .role-super { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #422006; box-shadow: 0 2px 6px rgba(245,158,11,0.3); }
+        .role-admin { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 0.5; }
+        .score-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        .modal-backdrop { background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        #passwordChangeForm { transition: max-height 0.3s ease-out; }
+        .reset-btn-overlay { z-index: 20; }
+        .standings-table-container { scrollbar-width: thin; }
     </style>
 </head>
-<body class="p-4 md:p-8">
-    <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-            <div>
-                <h1 class="text-4xl font-extrabold text-gray-900 mb-2">🏆 Tournament Manager</h1>
-                <p class="text-gray-500 uppercase tracking-widest text-sm font-semibold">Live Match Fixtures & Standings</p>
-                <div id="liveStatus" class="hidden mt-2">
-                    <span class="live-badge inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                        <span class="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
-                        🔴 Live Updates Active
-                    </span>
-                </div>
-            </div>
-            
-            <!-- Auth Controls -->
-            <div id="authControls" class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border">
-                <div id="userInfo" class="text-sm text-gray-600 hidden mr-2">
-                    👤 <span id="userName" class="font-medium"></span>
-                    <span id="userRoleBadge" class="role-badge ml-2"></span>
-                </div>
-                <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
-                    🔐 Login
-                </button>
-                <button id="logoutBtn" onclick="logout()" class="hidden px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-bold transition-colors">
-                    🚪 Logout
-                </button>
-            </div>
-        </header>
+<body class="p-3 md:p-6 min-h-screen">
 
-        <!-- Permission Error Banner -->
-        <div id="permissionError" class="hidden mb-6 p-4 bg-red-50 border border-red-200 rounded-xl error-panel">
-            <div class="flex items-start gap-3">
-                <div class="text-red-600 text-xl">⚠️</div>
-                <div class="flex-1">
-                    <h3 class="font-bold text-red-800 mb-1">Database Permission Error</h3>
-                    <p class="text-sm text-red-700 mb-2">Unable to write to Firebase database. Please update your security rules:</p>
-                    <ol class="text-xs text-red-600 space-y-1 ml-4 list-decimal">
-                        <li>Go to <a href="https://console.firebase.google.com/project/e-war-5f8a6/database/e-war-5f8a6-default-rtdb/rules" target="_blank" class="text-blue-600 underline">Firebase Console → Realtime Database → Rules</a></li>
-                        <li>Replace rules with: <code class="bg-red-100 px-1 rounded">{ "rules": { "tournament": { ".read": true, ".write": true } } }</code></li>
-                        <li>Click "Publish"</li>
-                    </ol>
+    <div class="max-w-7xl mx-auto">
+        <!-- Header with live badge & auth -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <div>
+                <h1 class="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">🏆 Tournament Manager</h1>
+                <div class="flex flex-wrap items-center gap-3 mt-2">
+                    <p class="text-gray-500 text-sm font-semibold uppercase tracking-wider">⚡ Live Match Fixtures & Standings</p>
+                    <div id="liveStatus" class="hidden">
+                        <span class="live-badge inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs px-3 py-1 rounded-full border border-green-200">
+                            <span class="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
+                            🔴 LIVE SYNC ACTIVE
+                        </span>
+                    </div>
                 </div>
-                <button onclick="document.getElementById('permissionError').classList.add('hidden')" class="text-red-400 hover:text-red-600">✕</button>
+            </div>
+            <div id="authControls" class="flex items-center gap-3 bg-white/70 backdrop-blur-sm p-2 pr-3 rounded-2xl shadow-sm border border-gray-200">
+                <div id="userInfo" class="hidden items-center gap-2 text-sm">
+                    <span class="text-gray-700">👋</span>
+                    <span id="userName" class="font-semibold text-gray-800"></span>
+                    <span id="userRoleBadge" class="role-badge text-xs px-2 py-1 rounded-full font-bold"></span>
+                </div>
+                <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition shadow-md shadow-indigo-200">🔐 Admin Login</button>
+                <button id="logoutBtn" onclick="logout()" class="hidden px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-sm font-bold transition">🚪 Logout</button>
             </div>
         </div>
 
+        <!-- Permission Error Banner (elevated) -->
+        <div id="permissionError" class="hidden mb-6 p-4 bg-rose-50 border-l-4 border-rose-500 rounded-xl shadow-sm">
+            <div class="flex gap-3">
+                <div class="text-rose-600 text-xl">⚠️</div>
+                <div class="flex-1">
+                    <h3 class="font-extrabold text-rose-800">Firebase Permission Issue</h3>
+                    <p class="text-sm text-rose-700">Write access denied. Update Realtime Database rules:</p>
+                    <code class="text-xs bg-rose-100 block mt-2 p-2 rounded">{ "rules": { "tournament": { ".read": true, ".write": true } } }</code>
+                </div>
+                <button onclick="document.getElementById('permissionError').classList.add('hidden')" class="text-rose-400">✖</button>
+            </div>
+        </div>
+
+        <!-- Main Grid: 2 Cols on Desktop -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Left Side: Match Fixtures -->
-            <div class="lg:col-span-2 space-y-6">
-                <div class="flex flex-col sm:flex-row justify-between items-center bg-white p-5 rounded-2xl shadow-sm gap-4 border border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-800">📅 Match Fixtures</h2>
-                    <div class="flex items-center gap-3">
-                        <label for="matchdaySelect" class="text-sm font-medium text-gray-600">Select Week:</label>
-                        <select id="matchdaySelect" class="bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold" onchange="renderMatches()">
-                            <!-- Options generated by JS -->
-                        </select>
+            <!-- LEFT: Match Fixtures (spans 2) -->
+            <div class="lg:col-span-2 space-y-5">
+                <div class="bg-white rounded-2xl shadow-md p-4 flex flex-wrap justify-between items-center gap-3 border border-gray-100">
+                    <h2 class="text-xl font-black text-gray-800 flex items-center gap-2">📅 Match Fixtures <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">select round</span></h2>
+                    <div class="flex gap-2">
+                        <label class="text-sm font-medium text-gray-500">Matchday:</label>
+                        <select id="matchdaySelect" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-blue-400" onchange="renderMatches()"></select>
                     </div>
                 </div>
-
                 <div id="matchesContainer" class="grid gap-4">
-                    <!-- Matches will appear here -->
+                    <!-- dynamic matches -->
                 </div>
             </div>
 
-            <!-- Right Side: Points Table -->
-            <div class="lg:col-span-1">
-                <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-4">
-                    <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-5">
-                        <h2 class="text-white font-bold text-xl flex items-center gap-2">
-                            <span>📊</span> Standings
-                        </h2>
+            <!-- RIGHT: Standings Table + Super Admin panel -->
+            <div class="lg:col-span-1 space-y-5">
+                <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-5">
+                    <div class="bg-gradient-to-r from-blue-700 to-indigo-800 p-4">
+                        <h2 class="text-white font-black text-xl flex items-center gap-2">📊 LEAGUE STANDINGS</h2>
                     </div>
-                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b sticky top-0">
+                    <div class="overflow-x-auto max-h-[550px] overflow-y-auto standings-table-container">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100 text-gray-600 uppercase text-xs sticky top-0">
                                 <tr>
-                                    <th class="px-4 py-4">Player</th>
-                                    <th class="px-2 py-4 text-center">P</th>
-                                    <th class="px-2 py-4 text-center">W</th>
-                                    <th class="px-2 py-4 text-center">D</th>
-                                    <th class="px-2 py-4 text-center">L</th>
-                                    <th class="px-4 py-4 text-center font-bold text-blue-600">Pts</th>
+                                    <th class="px-3 py-3 text-left">#</th>
+                                    <th class="px-2 py-3 text-left">Player</th>
+                                    <th class="px-2 text-center">P</th>
+                                    <th class="px-2 text-center">W</th>
+                                    <th class="px-2 text-center">D</th>
+                                    <th class="px-2 text-center">L</th>
+                                    <th class="px-3 text-center font-black text-blue-700">PTS</th>
                                 </tr>
                             </thead>
-                            <tbody id="pointsTableBody" class="divide-y divide-gray-100">
-                                <!-- Table rows generated by JS -->
-                            </tbody>
+                            <tbody id="pointsTableBody" class="divide-y divide-gray-100"></tbody>
                         </table>
                     </div>
-                    <div class="p-4 bg-gray-50 text-xs text-gray-400 text-center italic border-t">
-                        Win: 3 | Draw: 1 | Loss: 0
-                    </div>
+                    <div class="p-3 bg-gray-50 text-center text-xs text-gray-400 font-medium border-t">🏅 Win: +3 | Draw: +1 | Loss: 0</div>
                 </div>
-                
-                <!-- Super Admin Only Controls + Password Change Panel -->
-                <div class="super-admin-only mt-4 space-y-3">
-                    <button onclick="resetAllScores()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-colors">
-                        🗑️ Reset All Scores
-                    </button>
-                    <button onclick="clearAllData()" class="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-bold transition-colors">
-                        ⚠️ Clear Entire Database
-                    </button>
-                    
-                    <!-- Password Change Panel For Super Admin -->
-                    <div id="passwordChangePanel" class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                        <button id="togglePasswordPanelBtn" onclick="togglePasswordPanel()" class="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left font-semibold text-gray-700 text-sm">
+
+                <!-- SUPER ADMIN CONTROL PANEL (Fixed: properly positioned & interactive) -->
+                <div class="super-admin-only space-y-3 mt-2">
+                    <div class="bg-white rounded-xl shadow-md p-3 border border-amber-200">
+                        <div class="flex flex-col gap-2">
+                            <button onclick="resetAllScores()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-md">
+                                🧹 RESET ALL SCORES
+                            </button>
+                            <button onclick="clearAllData()" class="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2">
+                                💣 CLEAR ENTIRE DATABASE
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Super Admin Password Changer (collapsible) -->
+                    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <button id="togglePasswordPanelBtn" onclick="togglePasswordPanel()" class="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 transition text-left font-semibold text-gray-700">
                             <span>🔐 Change Super Admin Password</span>
-                            <svg id="panelArrow" class="w-4 h-4 transition-transform transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg id="panelArrow" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                             </svg>
                         </button>
-                        <div id="passwordChangeForm" class="hidden p-4 border-t border-gray-200 bg-white space-y-3">
-                            <input type="password" id="oldPasswordInput" placeholder="Current password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                            <input type="password" id="newPasswordInput" placeholder="New password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                            <input type="password" id="confirmPasswordInput" placeholder="Confirm new password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                            <button onclick="changeSuperAdminPassword()" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors">
-                                Update Password
-                            </button>
-                            <p id="passwordChangeMsg" class="text-xs text-center hidden"></p>
+                        <div id="passwordChangeForm" class="hidden p-4 border-t bg-white space-y-3">
+                            <input type="password" id="oldPasswordInput" placeholder="Current password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+                            <input type="password" id="newPasswordInput" placeholder="New password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+                            <input type="password" id="confirmPasswordInput" placeholder="Confirm new password" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+                            <button onclick="changeSuperAdminPassword()" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition">Update Password</button>
+                            <p id="passwordChangeMsg" class="text-xs text-center hidden font-medium"></p>
                         </div>
                     </div>
+                </div>
+                <!-- small hint: admin can edit scores directly on match cards -->
+                <div class="text-xs text-center text-gray-400 italic px-2 mt-2">
+                    💡 Admin / Super Admin: Click on score boxes to enter results instantly.
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Login Modal (Hints Removed) -->
-    <div id="loginModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl login-card">
-            <h3 class="text-xl font-bold mb-4 text-center">🔐 Admin Access</h3>
-            
-            <div class="mb-4 text-center text-gray-500 text-xs">
-                <span>Enter credentials to continue</span>
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 modal-backdrop hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-all">
+            <h3 class="text-2xl font-black text-center text-gray-800 mb-1">🔐 Admin Portal</h3>
+            <p class="text-center text-xs text-gray-400 mb-4">Enter password to continue</p>
+            <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl text-center text-xl font-mono tracking-wider focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••" autocomplete="off">
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeLoginModal()" class="flex-1 py-2.5 bg-gray-200 rounded-xl font-bold hover:bg-gray-300 transition">Cancel</button>
+                <button onclick="checkPasswordLogin()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">Login</button>
             </div>
-            
-            <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl font-mono" placeholder="Enter password..." autocomplete="off">
-            
-            <div class="flex gap-2">
-                <button onclick="closeLoginModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200 transition">Cancel</button>
-                <button onclick="checkPasswordLogin()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
-            </div>
-            <p id="loginError" class="text-red-500 text-xs mt-2 hidden text-center">Incorrect password. Try again.</p>
+            <p id="loginError" class="text-red-500 text-xs mt-2 hidden text-center font-medium">❌ Wrong password. Try again.</p>
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast hidden bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm"></div>
+    <!-- Toast -->
+    <div id="toast" class="toast fixed bottom-5 right-5 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold hidden z-[100] backdrop-blur-md"></div>
 
     <script>
-        // ========== FIREBASE CONFIG ==========
+        // ---------- FIREBASE INIT ----------
         const firebaseConfig = {
             apiKey: "AIzaSyBPkmaWLWad7Vn5RzlnZv-mLZgMaHv7xIg",
             authDomain: "e-war-5f8a6.firebaseapp.com",
@@ -188,78 +177,26 @@
             projectId: "e-war-5f8a6",
             storageBucket: "e-war-5f8a6.firebasestorage.app",
             messagingSenderId: "628352167173",
-            appId: "1:628352167173:web:744a3d3cca25a1ae695b6c",
-            measurementId: "G-JKCQKF6FY7"
+            appId: "1:628352167173:web:744a3d3cca25a1ae695b6c"
         };
-
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // ========== PASSWORD MANAGEMENT ==========
+        // ----- GLOBALS -----
         let SUPER_ADMIN_PASSWORD = "10";
         let ADMIN_PASSWORD = "30";
-        
-        async function loadPasswordsFromFirebase() {
-            const configRef = database.ref('tournament/config');
-            try {
-                const snapshot = await configRef.once('value');
-                const config = snapshot.val();
-                if (config) {
-                    if (config.superAdminPassword) SUPER_ADMIN_PASSWORD = config.superAdminPassword;
-                    if (config.adminPassword) ADMIN_PASSWORD = config.adminPassword;
-                } else {
-                    try {
-                        await configRef.set({
-                            superAdminPassword: SUPER_ADMIN_PASSWORD,
-                            adminPassword: ADMIN_PASSWORD
-                        });
-                    } catch (error) {
-                        console.error("Cannot write config initially:", error);
-                        showPermissionError();
-                    }
-                }
-            } catch (error) {
-                console.error("Error loading passwords:", error);
-                if (error.code === 'PERMISSION_DENIED') {
-                    showPermissionError();
-                }
-            }
-        }
-        
-        function showPermissionError() {
-            document.getElementById('permissionError').classList.remove('hidden');
-        }
-        
-        async function updateSuperAdminPassword(oldPwd, newPwd) {
-            if (oldPwd !== SUPER_ADMIN_PASSWORD) {
-                return { success: false, message: "Current password is incorrect" };
-            }
-            if (!newPwd || newPwd.trim() === "") {
-                return { success: false, message: "New password cannot be empty" };
-            }
-            if (newPwd === oldPwd) {
-                return { success: false, message: "New password must be different from current" };
-            }
-            try {
-                await database.ref('tournament/config/superAdminPassword').set(newPwd);
-                SUPER_ADMIN_PASSWORD = newPwd;
-                return { success: true, message: "Super Admin password updated successfully!" };
-            } catch (error) {
-                console.error(error);
-                if (error.code === 'PERMISSION_DENIED') {
-                    showPermissionError();
-                    return { success: false, message: "Permission denied! Please update Firebase security rules (see banner above)" };
-                }
-                return { success: false, message: "Database error: could not save new password" };
-            }
-        }
-        
-        // ========== TOURNAMENT DATA ==========
+        let currentRole = null;
+        let currentUser = null;
+        let scores = {};
+        let isUpdating = false;
+
+        // Players (as per original screenshot & standing)
         const players = ["Shammas", "Ameen", "Suhail", "Aslah", "Nisam", "Fadhil", "Yaseen", "Shahul", "Mirshad", "Fathah"];
         
+        // Match fixtures for 9 matchdays (based on your data)
         const fixtures = {
             1: [["Shammas", "Ameen"], ["Suhail", "Aslah"], ["Nisam", "Fadhil"], ["Yaseen", "Shahul"], ["Mirshad", "Fathah"]],
-            2: [["Shammas", "Suhail"], ["Ameen", "Aslah"], ["Nisam", "Yaseen"], ["Fadhil", "Shahul"], ["Mirshad", "Shahul"]],
+            2: [["Shammas", "Suhail"], ["Ameen", "Aslah"], ["Nisam", "Yaseen"], ["Fadhil", "Shahul"], ["Mirshad", "Fathah"]],
             3: [["Shammas", "Aslah"], ["Suhail", "Ameen"], ["Nisam", "Shahul"], ["Yaseen", "Fadhil"], ["Mirshad", "Nisam"]],
             4: [["Shammas", "Nisam"], ["Aslah", "Suhail"], ["Ameen", "Fadhil"], ["Yaseen", "Mirshad"], ["Shahul", "Fathah"]],
             5: [["Shammas", "Fadhil"], ["Nisam", "Ameen"], ["Aslah", "Yaseen"], ["Suhail", "Mirshad"], ["Shahul", "Fathah"]],
@@ -268,377 +205,296 @@
             8: [["Shammas", "Mirshad"], ["Shahul", "Nisam"], ["Yaseen", "Suhail"], ["Fadhil", "Ameen"], ["Aslah", "Fathah"]],
             9: [["Shammas", "Fathah"], ["Mirshad", "Fadhil"], ["Shahul", "Ameen"], ["Yaseen", "Nisam"], ["Suhail", "Aslah"]]
         };
-
-        let scores = {};
-        let currentUser = null;
-        let currentRole = null;
-        let isUpdating = false;
-
-        // ========== AUTH FUNCTIONS ==========
-        function showLoginModal() { 
-            document.getElementById('loginModal').style.display = 'flex';
-            document.getElementById('loginPassword').value = '';
-            document.getElementById('loginError').classList.add('hidden');
-            document.getElementById('loginPassword').focus();
+        
+        // ----- LOAD PASSWORDS FROM DB -----
+        async function loadPasswordsFromFirebase() {
+            const configRef = database.ref('tournament/config');
+            try {
+                const snap = await configRef.once('value');
+                const cfg = snap.val();
+                if (cfg) {
+                    if (cfg.superAdminPassword) SUPER_ADMIN_PASSWORD = cfg.superAdminPassword;
+                    if (cfg.adminPassword) ADMIN_PASSWORD = cfg.adminPassword;
+                } else {
+                    await configRef.set({ superAdminPassword: SUPER_ADMIN_PASSWORD, adminPassword: ADMIN_PASSWORD });
+                }
+            } catch(e) {
+                if(e.code === 'PERMISSION_DENIED') showPermissionError();
+                console.warn(e);
+            }
         }
         
-        function closeLoginModal() { 
-            document.getElementById('loginModal').style.display = 'none';
+        function showPermissionError() { document.getElementById('permissionError')?.classList.remove('hidden'); }
+        
+        // ----- AUTH -----
+        function showLoginModal() { 
+            document.getElementById('loginModal').style.display = 'flex'; 
+            document.getElementById('loginPassword').value = '';
+            document.getElementById('loginError').classList.add('hidden');
         }
-
+        function closeLoginModal() { document.getElementById('loginModal').style.display = 'none'; }
+        
         function checkPasswordLogin() {
-            const password = document.getElementById('loginPassword').value;
-            const errorDiv = document.getElementById('loginError');
-            
-            if (password === SUPER_ADMIN_PASSWORD) {
+            const pwd = document.getElementById('loginPassword').value;
+            if (pwd === SUPER_ADMIN_PASSWORD) {
                 currentRole = 'super';
                 currentUser = { name: 'Super Admin', role: 'super' };
                 sessionStorage.setItem('tournament_role', 'super');
-                sessionStorage.setItem('tournament_user', 'Super Admin');
                 closeLoginModal();
                 updateAuthUI();
-                showToast('✅ Logged in as SUPER ADMIN! Full access granted.', 'success');
-            } 
-            else if (password === ADMIN_PASSWORD) {
+                showToast('⭐ SUPER ADMIN: Full control enabled', 'success');
+            } else if (pwd === ADMIN_PASSWORD) {
                 currentRole = 'admin';
                 currentUser = { name: 'Admin', role: 'admin' };
                 sessionStorage.setItem('tournament_role', 'admin');
-                sessionStorage.setItem('tournament_user', 'Admin');
                 closeLoginModal();
                 updateAuthUI();
-                showToast('✅ Logged in as ADMIN. You can update scores.', 'success');
-            } 
-            else {
-                errorDiv.classList.remove('hidden');
-                document.getElementById('loginPassword').value = '';
-                document.getElementById('loginPassword').focus();
+                showToast('👑 Admin mode: You can update scores', 'success');
+            } else {
+                document.getElementById('loginError').classList.remove('hidden');
             }
         }
-
+        
         function logout() {
             currentRole = null;
             currentUser = null;
             sessionStorage.removeItem('tournament_role');
-            sessionStorage.removeItem('tournament_user');
             updateAuthUI();
-            showToast('👋 Logged out', 'info');
+            showToast('🔓 Logged out successfully', 'info');
         }
-
+        
         function updateAuthUI() {
-            const savedRole = sessionStorage.getItem('tournament_role');
-            if (savedRole === 'super') {
-                currentRole = 'super';
-                currentUser = { name: 'Super Admin', role: 'super' };
-            } else if (savedRole === 'admin') {
-                currentRole = 'admin';
-                currentUser = { name: 'Admin', role: 'admin' };
-            }
-            
+            const saved = sessionStorage.getItem('tournament_role');
+            if (saved === 'super') { currentRole = 'super'; currentUser = { name: 'Super Admin' }; }
+            else if (saved === 'admin') { currentRole = 'admin'; currentUser = { name: 'Admin' }; }
             const loginBtn = document.getElementById('loginBtn');
             const logoutBtn = document.getElementById('logoutBtn');
-            const userInfo = document.getElementById('userInfo');
+            const userInfoDiv = document.getElementById('userInfo');
             const userNameSpan = document.getElementById('userName');
-            const userRoleBadge = document.getElementById('userRoleBadge');
-            
+            const roleBadge = document.getElementById('userRoleBadge');
             if (currentRole) {
                 loginBtn.classList.add('hidden');
                 logoutBtn.classList.remove('hidden');
-                userInfo.classList.remove('hidden');
+                userInfoDiv.classList.remove('hidden');
                 userNameSpan.textContent = currentUser.name;
-                
                 if (currentRole === 'super') {
-                    userRoleBadge.textContent = '⭐ SUPER ADMIN';
-                    userRoleBadge.className = 'role-badge role-super ml-2';
+                    roleBadge.textContent = '⭐ SUPER ADMIN';
+                    roleBadge.className = 'role-super text-xs px-2 py-1 rounded-full font-black ml-2';
                     document.body.classList.add('super-admin-mode');
                     document.body.classList.remove('admin-mode');
                 } else {
-                    userRoleBadge.textContent = '👑 ADMIN';
-                    userRoleBadge.className = 'role-badge role-admin ml-2';
+                    roleBadge.textContent = '👑 ADMIN';
+                    roleBadge.className = 'role-admin text-xs px-2 py-1 rounded-full font-bold ml-2';
                     document.body.classList.add('admin-mode');
                     document.body.classList.remove('super-admin-mode');
                 }
             } else {
                 loginBtn.classList.remove('hidden');
                 logoutBtn.classList.add('hidden');
-                userInfo.classList.add('hidden');
+                userInfoDiv.classList.add('hidden');
                 document.body.classList.remove('admin-mode', 'super-admin-mode');
             }
             renderMatches();
         }
-
-        // ========== REALTIME SYNC ==========
-        function setupRealtimeSync() {
-            const scoresRef = database.ref('tournament/scores');
-            scoresRef.on('value', (snapshot) => {
-                if (!isUpdating) {
-                    const data = snapshot.val();
-                    scores = data || {};
-                    renderMatches();
-                    updateTable();
-                }
-            }, (error) => {
-                console.error("Realtime sync error:", error);
-                if (error.code === 'PERMISSION_DENIED') {
-                    showPermissionError();
-                }
-            });
-            document.getElementById('liveStatus').classList.remove('hidden');
-        }
-
+        
+        // ----- DATABASE SAVE SCORE (Fixed for super-admin & admin) -----
         async function saveScoreToRealtimeDB(matchId, playerKey, value) {
             if (!currentRole) {
-                showToast('❌ Please login to update scores', 'error');
-                renderMatches();
+                showToast('❌ Please login as Admin to update scores', 'error');
+                renderMatches(); 
                 return false;
             }
             isUpdating = true;
             if (!scores[matchId]) scores[matchId] = { s1: '', s2: '' };
-            scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
+            scores[matchId][playerKey] = (value === '' || value === null) ? '' : parseInt(value);
             try {
                 await database.ref('tournament/scores').set(scores);
-                showToast('✅ Score saved! Live update complete.', 'success');
+                showToast('✅ Score updated & live synced!', 'success');
                 return true;
-            } catch (error) {
-                console.error("Save error:", error);
-                if (error.code === 'PERMISSION_DENIED') {
-                    showPermissionError();
-                    showToast('❌ Permission denied! Please check Firebase security rules.', 'error');
-                } else {
-                    showToast('❌ Failed to save: ' + error.message, 'error');
-                }
+            } catch (err) {
+                if (err.code === 'PERMISSION_DENIED') showPermissionError();
+                showToast('❌ DB error: ' + (err.message || 'permission denied'), 'error');
                 return false;
             } finally {
                 isUpdating = false;
             }
         }
-
+        
+        // ----- RESET ALL SCORES (super admin fix: now visible and working) -----
         async function resetAllScores() {
-            if (currentRole !== 'super') {
-                showToast('❌ Only SUPER ADMIN can reset scores!', 'error');
-                return;
-            }
-            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score.')) {
+            if (currentRole !== 'super') { showToast('⛔ Only Super Admin can reset scores', 'error'); return; }
+            if (confirm('⚠️ WARNING: This will reset all match scores to empty. Are you sure?')) {
                 isUpdating = true;
                 try {
                     await database.ref('tournament/scores').set({});
                     scores = {};
                     renderMatches();
                     updateTable();
-                    showToast('🗑️ All scores have been reset!', 'success');
-                } catch (error) {
-                    console.error("Reset error:", error);
-                    if (error.code === 'PERMISSION_DENIED') {
-                        showPermissionError();
-                        showToast('❌ Permission denied! Update Firebase security rules to fix this.', 'error');
-                    } else {
-                        showToast('❌ Failed to reset: ' + error.message, 'error');
-                    }
-                } finally {
-                    isUpdating = false;
-                }
+                    showToast('🗑️ All match scores have been reset!', 'success');
+                } catch(e) {
+                    showToast('Reset failed: ' + e.message, 'error');
+                } finally { isUpdating = false; }
             }
         }
-
+        
         async function clearAllData() {
-            if (currentRole !== 'super') {
-                showToast('❌ Only SUPER ADMIN can clear data!', 'error');
-                return;
-            }
-            if (confirm('⚠️⚠️⚠️ DESTROY ALL DATA ⚠️⚠️⚠️\n\nThis will completely wipe the entire database. This action CANNOT be undone!\n\nType "DELETE" to confirm:')) {
-                const confirmation = prompt('Type "DELETE" to confirm wiping all data:');
-                if (confirmation === 'DELETE') {
-                    isUpdating = true;
+            if (currentRole !== 'super') { showToast('⛔ Super Admin only', 'error'); return; }
+            if (confirm('💀 DESTROY ALL DATA? This action is irreversible. Type "DELETE" to confirm:')) {
+                const confirmText = prompt('Type DELETE to confirm complete wipe:');
+                if (confirmText === 'DELETE') {
                     try {
                         await database.ref('tournament').remove();
                         scores = {};
                         await loadPasswordsFromFirebase();
                         renderMatches();
                         updateTable();
-                        showToast('💀 All data has been permanently deleted!', 'error');
-                    } catch (error) {
-                        console.error("Clear error:", error);
-                        if (error.code === 'PERMISSION_DENIED') {
-                            showPermissionError();
-                            showToast('❌ Permission denied! Update Firebase security rules.', 'error');
-                        } else {
-                            showToast('❌ Failed to clear: ' + error.message, 'error');
-                        }
-                    } finally {
-                        isUpdating = false;
-                    }
-                } else {
-                    showToast('Operation cancelled', 'info');
-                }
+                        showToast('💀 Entire database cleared', 'error');
+                    } catch(e) { showToast('Clear error: ' + e.message, 'error'); }
+                } else showToast('Operation cancelled', 'info');
             }
         }
         
         async function changeSuperAdminPassword() {
-            if (currentRole !== 'super') {
-                showToast('❌ Only Super Admin can change the password', 'error');
-                return;
-            }
-            const oldPwd = document.getElementById('oldPasswordInput').value;
+            if (currentRole !== 'super') { showToast('Only Super Admin can change password', 'error'); return; }
+            const old = document.getElementById('oldPasswordInput').value;
             const newPwd = document.getElementById('newPasswordInput').value;
             const confirmPwd = document.getElementById('confirmPasswordInput').value;
             const msgDiv = document.getElementById('passwordChangeMsg');
-            
-            if (!oldPwd || !newPwd || !confirmPwd) {
-                msgDiv.textContent = "⚠️ All fields are required";
-                msgDiv.classList.remove('hidden');
-                msgDiv.classList.add('text-red-600');
+            if (!old || !newPwd || !confirmPwd) {
+                msgDiv.textContent = "⚠️ All fields required"; msgDiv.classList.remove('hidden'); msgDiv.className = "text-xs text-center text-red-600 font-medium";
                 return;
             }
-            if (newPwd !== confirmPwd) {
-                msgDiv.textContent = "❌ New passwords do not match";
-                msgDiv.classList.remove('hidden');
-                msgDiv.classList.add('text-red-600');
-                return;
-            }
-            const result = await updateSuperAdminPassword(oldPwd, newPwd);
-            if (result.success) {
-                msgDiv.textContent = "✅ " + result.message;
-                msgDiv.classList.remove('hidden');
-                msgDiv.classList.add('text-green-600');
+            if (newPwd !== confirmPwd) { msgDiv.textContent = "❌ New passwords do not match"; msgDiv.classList.remove('hidden'); msgDiv.className = "text-xs text-center text-red-600"; return; }
+            if (old !== SUPER_ADMIN_PASSWORD) { msgDiv.textContent = "❌ Current password incorrect"; msgDiv.classList.remove('hidden'); return; }
+            try {
+                await database.ref('tournament/config/superAdminPassword').set(newPwd);
+                SUPER_ADMIN_PASSWORD = newPwd;
+                msgDiv.textContent = "✅ Password updated successfully!";
+                msgDiv.classList.remove('hidden'); msgDiv.className = "text-xs text-center text-green-600 font-bold";
                 document.getElementById('oldPasswordInput').value = '';
                 document.getElementById('newPasswordInput').value = '';
                 document.getElementById('confirmPasswordInput').value = '';
-                setTimeout(() => {
-                    msgDiv.classList.add('hidden');
-                }, 3000);
-                showToast(result.message, 'success');
-            } else {
-                msgDiv.textContent = "❌ " + result.message;
-                msgDiv.classList.remove('hidden');
-                msgDiv.classList.add('text-red-600');
-            }
+                setTimeout(() => msgDiv.classList.add('hidden'), 3500);
+                showToast('Super Admin password changed', 'success');
+            } catch(e) { showToast('DB error: ' + e.message, 'error'); }
         }
         
         function togglePasswordPanel() {
             const formDiv = document.getElementById('passwordChangeForm');
             const arrow = document.getElementById('panelArrow');
-            if (formDiv.classList.contains('hidden')) {
-                formDiv.classList.remove('hidden');
-                arrow.style.transform = 'rotate(180deg)';
-            } else {
-                formDiv.classList.add('hidden');
-                arrow.style.transform = 'rotate(0deg)';
-            }
+            formDiv.classList.toggle('hidden');
+            arrow.style.transform = formDiv.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
         }
-
-        function showToast(message, type = 'info') {
+        
+        function showToast(msg, type = 'info') {
             const toast = document.getElementById('toast');
             const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔄';
-            toast.innerHTML = `${icon} ${message}`;
+            toast.innerHTML = `${icon} ${msg}`;
             toast.classList.remove('hidden');
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
+            setTimeout(() => toast.classList.add('hidden'), 2800);
         }
-
+        
+        // ----- RENDER MATCHES (with proper score inputs for admin/super) -----
         function renderMatches() {
             const day = document.getElementById('matchdaySelect').value;
             const container = document.getElementById('matchesContainer');
             if (!container) return;
             container.innerHTML = '';
-
-            fixtures[day].forEach((match, index) => {
-                const matchId = `${day}-${index}`;
-                const s1 = scores[matchId]?.s1 ?? '';
-                const s2 = scores[matchId]?.s2 ?? '';
-                const isPlayed = s1 !== '' && s2 !== '';
+            const matches = fixtures[day];
+            if (!matches) return;
+            matches.forEach((match, idx) => {
+                const matchId = `${day}-${idx}`;
+                const s1 = scores[matchId]?.s1 !== undefined && scores[matchId]?.s1 !== '' ? scores[matchId].s1 : '';
+                const s2 = scores[matchId]?.s2 !== undefined && scores[matchId]?.s2 !== '' ? scores[matchId].s2 : '';
+                const isPlayed = (s1 !== '' && s2 !== '');
                 const scoreDisplay = isPlayed ? `${s1} - ${s2}` : 'vs';
-
+                
                 const div = document.createElement('div');
-                div.className = "match-card bg-white p-5 rounded-2xl border border-gray-100 flex items-center shadow-sm";
+                div.className = "match-card bg-white p-4 rounded-2xl shadow-md border border-gray-100 flex items-center justify-between gap-2";
                 div.innerHTML = `
-                    <div class="flex-1 text-right pr-6 font-bold text-gray-800 text-lg">${match[0]}</div>
-                    
-                    <div class="admin-only items-center gap-4 bg-gray-50 p-2 rounded-xl border border-gray-200">
-                        <input type="number" value="${s1}" onchange="saveScoreToRealtimeDB('${matchId}', 's1', this.value)" 
-                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner"
-                               placeholder="-">
-                        <span class="text-gray-400 font-black text-xs uppercase">VS</span>
-                        <input type="number" value="${s2}" onchange="saveScoreToRealtimeDB('${matchId}', 's2', this.value)" 
-                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner"
-                               placeholder="-">
+                    <div class="w-1/3 text-right font-black text-gray-800 text-base md:text-lg truncate">${match[0]}</div>
+                    <div class="flex items-center gap-2">
+                        <div class="admin-only items-center gap-2 bg-gray-100 p-2 rounded-xl">
+                            <input type="number" value="${s1}" onchange="saveScoreToRealtimeDB('${matchId}', 's1', this.value)" 
+                                   class="score-input w-12 h-12 text-center text-xl font-black bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-400" placeholder="-">
+                            <span class="font-black text-gray-500 mx-1">⚡</span>
+                            <input type="number" value="${s2}" onchange="saveScoreToRealtimeDB('${matchId}', 's2', this.value)" 
+                                   class="score-input w-12 h-12 text-center text-xl font-black bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-400" placeholder="-">
+                        </div>
+                        <div class="viewer-only bg-gray-100 px-4 py-2 rounded-xl font-black text-gray-600 min-w-[70px] text-center border">${scoreDisplay}</div>
                     </div>
-
-                    <div class="viewer-only items-center justify-center min-w-[80px] bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 font-black text-xl ${isPlayed ? 'text-blue-700' : 'text-gray-400'}">
-                        ${scoreDisplay}
-                    </div>
-
-                    <div class="flex-1 text-left pl-6 font-bold text-gray-800 text-lg">${match[1]}</div>
+                    <div class="w-1/3 text-left font-black text-gray-800 text-base md:text-lg truncate">${match[1]}</div>
                 `;
                 container.appendChild(div);
             });
         }
-
+        
+        // ----- STANDINGS CALCULATION (with goal difference if needed)-----
         function updateTable() {
             let stats = {};
             players.forEach(p => stats[p] = { played: 0, w: 0, d: 0, l: 0, pts: 0, gd: 0 });
-
             Object.keys(scores).forEach(matchId => {
-                const [day, index] = matchId.split('-');
-                const match = fixtures[day]?.[parseInt(index)];
+                const [day, idx] = matchId.split('-');
+                const match = fixtures[day]?.[parseInt(idx)];
                 const s = scores[matchId];
                 if (match && s && s.s1 !== '' && s.s2 !== '' && !isNaN(s.s1) && !isNaN(s.s2)) {
-                    const p1 = match[0];
-                    const p2 = match[1];
-                    stats[p1].played++;
-                    stats[p2].played++;
+                    const p1 = match[0], p2 = match[1];
+                    stats[p1].played++; stats[p2].played++;
                     stats[p1].gd += (s.s1 - s.s2);
                     stats[p2].gd += (s.s2 - s.s1);
-                    if (s.s1 > s.s2) {
-                        stats[p1].w++; stats[p1].pts += 3;
-                        stats[p2].l++;
-                    } else if (s.s1 < s.s2) {
-                        stats[p2].w++; stats[p2].pts += 3;
-                        stats[p1].l++;
-                    } else {
-                        stats[p1].d++; stats[p1].pts += 1;
-                        stats[p2].d++; stats[p2].pts += 1;
-                    }
+                    if (s.s1 > s.s2) { stats[p1].w++; stats[p1].pts += 3; stats[p2].l++; }
+                    else if (s.s1 < s.s2) { stats[p2].w++; stats[p2].pts += 3; stats[p1].l++; }
+                    else { stats[p1].d++; stats[p1].pts += 1; stats[p2].d++; stats[p2].pts += 1; }
                 }
             });
-
-            const sortedPlayers = [...players].sort((a, b) => {
+            const sorted = [...players].sort((a,b) => {
                 if (stats[b].pts !== stats[a].pts) return stats[b].pts - stats[a].pts;
                 if (stats[b].gd !== stats[a].gd) return stats[b].gd - stats[a].gd;
                 return stats[b].w - stats[a].w;
             });
-            
             const tbody = document.getElementById('pointsTableBody');
             tbody.innerHTML = '';
-            sortedPlayers.forEach((p, idx) => {
-                const s = stats[p];
-                const row = `<tr class="bg-white hover:bg-blue-50 transition-colors">
-                        <td class="px-4 py-4 flex items-center gap-3">
-                            <span class="text-xs text-gray-400 font-mono w-4">${idx + 1}</span>
-                            <span class="font-bold text-gray-900">${p}</span>
-                        </td>
-                        <td class="px-2 py-4 text-center font-medium text-gray-600">${s.played}</td>
-                        <td class="px-2 py-4 text-center font-bold text-green-600">${s.w}</td>
-                        <td class="px-2 py-4 text-center font-bold text-amber-500">${s.d}</td>
-                        <td class="px-2 py-4 text-center font-bold text-red-500">${s.l}</td>
-                        <td class="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/50">${s.pts}</td>
-                      </tr>`;
+            sorted.forEach((p, rank) => {
+                const st = stats[p];
+                const row = `<tr class="border-b border-gray-100 hover:bg-blue-50 transition">
+                    <td class="px-3 py-3 text-xs font-mono font-bold text-gray-500">${rank+1}</td>
+                    <td class="px-2 py-3 font-extrabold text-gray-800">${p}</td>
+                    <td class="px-2 py-3 text-center font-semibold text-gray-600">${st.played}</td>
+                    <td class="px-2 py-3 text-center text-green-600 font-black">${st.w}</td>
+                    <td class="px-2 py-3 text-center text-yellow-600 font-black">${st.d}</td>
+                    <td class="px-2 py-3 text-center text-red-500 font-black">${st.l}</td>
+                    <td class="px-3 py-3 text-center bg-blue-50 text-blue-700 font-black rounded-full">${st.pts}</td>
+                </tr>`;
                 tbody.innerHTML += row;
             });
         }
-
+        
+        // ----- REALTIME SYNC -----
+        function setupRealtimeSync() {
+            const scoresRef = database.ref('tournament/scores');
+            scoresRef.on('value', (snap) => {
+                if (!isUpdating) {
+                    scores = snap.val() || {};
+                    renderMatches();
+                    updateTable();
+                }
+            }, err => { if(err.code === 'PERMISSION_DENIED') showPermissionError(); });
+            document.getElementById('liveStatus')?.classList.remove('hidden');
+        }
+        
+        // ----- INIT -----
         async function init() {
             await loadPasswordsFromFirebase();
             const select = document.getElementById('matchdaySelect');
-            for(let i = 1; i <= 9; i++) {
+            for (let i=1; i<=9; i++) {
                 let opt = document.createElement('option');
-                opt.value = i;
-                opt.innerHTML = `Matchday ${i}`;
+                opt.value = i; opt.innerHTML = `📆 Matchday ${i}`;
                 select.appendChild(opt);
             }
             updateAuthUI();
             setupRealtimeSync();
         }
-
+        
         window.saveScoreToRealtimeDB = saveScoreToRealtimeDB;
         window.resetAllScores = resetAllScores;
         window.clearAllData = clearAllData;
@@ -649,7 +505,7 @@
         window.renderMatches = renderMatches;
         window.changeSuperAdminPassword = changeSuperAdminPassword;
         window.togglePasswordPanel = togglePasswordPanel;
-
+        
         init();
     </script>
 </body>
