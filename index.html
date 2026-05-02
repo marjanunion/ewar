@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tournament Manager & Standings</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body {
@@ -32,6 +36,22 @@
         body.admin-mode .viewer-only {
             display: none;
         }
+        .toast {
+            transition: opacity 0.3s ease;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -41,15 +61,19 @@
             <div class="text-center md:text-left">
                 <h1 class="text-4xl font-extrabold text-gray-900 mb-2">🏆 Tournament Manager</h1>
                 <p class="text-gray-500 uppercase tracking-widest text-sm font-semibold">Match Fixtures & League Standings</p>
+                <p id="liveStatus" class="text-xs text-green-600 mt-1 hidden">🔴 Live updates active</p>
             </div>
             
-            <!-- Admin Toggle -->
-            <div id="adminControls" class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border">
-                <button id="adminBtn" onclick="toggleAdmin()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-bold transition-colors">
-                    🔓 Admin Login
+            <!-- Auth Controls -->
+            <div id="authControls" class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border">
+                <div id="userInfo" class="text-sm text-gray-600 hidden mr-2">
+                    👤 <span id="userEmail"></span>
+                </div>
+                <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
+                    🔐 Admin Login
                 </button>
                 <button id="logoutBtn" onclick="logout()" class="hidden px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-bold transition-colors">
-                    🔒 Logout
+                    🚪 Logout
                 </button>
             </div>
         </header>
@@ -104,7 +128,7 @@
                 
                 <!-- Reset Data (Admin Only) -->
                 <div class="admin-only mt-4">
-                    <button onclick="resetData()" class="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-bold transition-colors border border-red-200">
+                    <button onclick="resetAllScores()" class="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-bold transition-colors border border-red-200">
                         🗑️ Reset All Scores
                     </button>
                 </div>
@@ -112,22 +136,63 @@
         </div>
     </div>
 
-    <!-- Simple Password Modal -->
-    <div id="passwordModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">Admin Authentication</h3>
-            <input type="password" id="adminPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter password...">
+            <h3 class="text-lg font-bold mb-4">🔐 Admin Login</h3>
+            <input type="email" id="loginEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
+            <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password">
             <div class="flex gap-2">
-                <button onclick="closeModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold">Cancel</button>
-                <button onclick="checkPassword()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold">Login</button>
+                <button onclick="closeLoginModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold">Cancel</button>
+                <button onclick="loginWithEmail()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold">Login</button>
             </div>
-            <p id="errorMsg" class="text-red-500 text-xs mt-2 hidden">Incorrect password. Try again.</p>
+            <p id="loginError" class="text-red-500 text-xs mt-2 hidden"></p>
+            <hr class="my-4">
+            <button onclick="showSignupModal()" class="w-full text-center text-sm text-blue-600 hover:text-blue-700">
+                Don't have an account? Sign up
+            </button>
         </div>
     </div>
 
+    <!-- Signup Modal -->
+    <div id="signupModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">📝 Create Admin Account</h3>
+            <input type="email" id="signupEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
+            <input type="password" id="signupPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password (min 6 chars)">
+            <div class="flex gap-2">
+                <button onclick="closeSignupModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold">Cancel</button>
+                <button onclick="signup()" class="flex-1 py-2 bg-green-600 text-white rounded-lg font-semibold">Sign Up</button>
+            </div>
+            <p id="signupError" class="text-red-500 text-xs mt-2 hidden"></p>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm hidden toast z-50">
+        🔄 Updating...
+    </div>
+
     <script>
+        // ========== FIREBASE CONFIG ==========
+        const firebaseConfig = {
+            apiKey: "AIzaSyBPkmaWlwad7Vn5Rz1NzV-mLZgM4hV7xIg",
+            authDomain: "e-war-5f8a6.firebaseapp.com",
+            projectId: "e-war-5f8a6",
+            storageBucket: "e-war-5f8a6.firebasestorage.app",
+            messagingSenderId: "628352167173",
+            appId: "1:628352167173:web:74443d3cca25a1ae695b6c",
+            measurementId: "G-JKCQKf6FY7",
+            databaseURL: "https://e-war-5f86-default-rtdb.firebaseio.com/"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // ========== TOURNAMENT DATA ==========
         const players = ["Shammas", "Ameen", "Suhail", "Aslah", "Nisam", "Fadhil", "Yaseen", "Shahul", "Mirshad", "Fathah"];
-        const ADMIN_PASSWORD = "ewar0"; // Updated Password
         
         const fixtures = {
             1: [["Shammas", "Ameen"], ["Suhail", "Aslah"], ["Nisam", "Fadhil"], ["Yaseen", "Shahul"], ["Mirshad", "Fathah"]],
@@ -141,75 +206,206 @@
             9: [["Shammas", "Fathah"], ["Mirshad", "Fadhil"], ["Shahul", "Ameen"], ["Yaseen", "Nisam"], ["Suhail", "Aslah"]]
         };
 
-        // Load scores from Local Storage
-        let scores = JSON.parse(localStorage.getItem('tournament_scores')) || {};
-        let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        let scores = {};
+        let currentUser = null;
+        let isUpdating = false;
+
+        // ========== AUTH FUNCTIONS ==========
+        function showLoginModal() { 
+            document.getElementById('loginModal').style.display = 'flex';
+            document.getElementById('loginEmail').focus();
+        }
+        
+        function closeLoginModal() { 
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginEmail').value = '';
+            document.getElementById('loginPassword').value = '';
+        }
+        
+        function showSignupModal() {
+            closeLoginModal();
+            document.getElementById('signupModal').style.display = 'flex';
+        }
+        
+        function closeSignupModal() {
+            document.getElementById('signupModal').style.display = 'none';
+            document.getElementById('signupError').classList.add('hidden');
+            document.getElementById('signupEmail').value = '';
+            document.getElementById('signupPassword').value = '';
+        }
+
+        async function loginWithEmail() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                closeLoginModal();
+                showToast('✅ Logged in as admin!', 'success');
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function signup() {
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const errorDiv = document.getElementById('signupError');
+            
+            if (password.length < 6) {
+                errorDiv.textContent = 'Password must be at least 6 characters';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+                closeSignupModal();
+                showToast('✅ Account created! You can now edit scores.', 'success');
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function logout() {
+            await auth.signOut();
+            showToast('👋 Logged out', 'info');
+        }
+
+        // ========== REALTIME DATABASE SYNC ==========
+        function setupRealtimeSync() {
+            const scoresRef = database.ref('tournament/scores');
+            
+            // Listen for real-time changes
+            scoresRef.on('value', (snapshot) => {
+                if (!isUpdating) {
+                    const data = snapshot.val();
+                    scores = data || {};
+                    renderMatches();
+                    updateTable();
+                    
+                    // Show notification for viewers when scores change
+                    if (!currentUser) {
+                        showToast('🔄 Scores updated by admin!', 'info');
+                    }
+                }
+            });
+            
+            // Show live status
+            document.getElementById('liveStatus').classList.remove('hidden');
+        }
+
+        async function saveScoreToRealtimeDB(matchId, playerKey, value) {
+            if (!currentUser) {
+                showToast('❌ Please login to update scores', 'error');
+                // Reset the input value
+                renderMatches();
+                return false;
+            }
+            
+            isUpdating = true;
+            
+            // Update local scores first for immediate feedback
+            if (!scores[matchId]) scores[matchId] = { s1: '', s2: '' };
+            scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
+            
+            try {
+                // Save to Realtime Database
+                await database.ref('tournament/scores').set(scores);
+                showToast('✅ Score saved! Everyone can see it now.', 'success');
+                return true;
+            } catch (error) {
+                console.error('Error saving:', error);
+                showToast('❌ Failed to save: ' + error.message, 'error');
+                return false;
+            } finally {
+                isUpdating = false;
+            }
+        }
+
+        async function resetAllScores() {
+            if (!currentUser) {
+                showToast('❌ Login required to reset scores', 'error');
+                return;
+            }
+            
+            if (confirm('⚠️ RESET ALL SCORES?\n\nThis will delete every match score and cannot be undone. Everyone will see the empty scores immediately.')) {
+                isUpdating = true;
+                try {
+                    await database.ref('tournament/scores').set({});
+                    scores = {};
+                    renderMatches();
+                    updateTable();
+                    showToast('🗑️ All scores have been reset!', 'success');
+                } catch (error) {
+                    showToast('❌ Failed to reset: ' + error.message, 'error');
+                } finally {
+                    isUpdating = false;
+                }
+            }
+        }
+
+        // ========== UI FUNCTIONS ==========
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔄';
+            toast.innerHTML = `${icon} ${message}`;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2500);
+        }
+
+        function updateAuthUI(user) {
+            currentUser = user;
+            const loginBtn = document.getElementById('loginBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const userInfo = document.getElementById('userInfo');
+            const userEmailSpan = document.getElementById('userEmail');
+            
+            if (user) {
+                loginBtn.classList.add('hidden');
+                logoutBtn.classList.remove('hidden');
+                userInfo.classList.remove('hidden');
+                userEmailSpan.textContent = user.email;
+                document.body.classList.add('admin-mode');
+                showToast(`Welcome ${user.email.split('@')[0]}! You can now edit scores.`, 'success');
+            } else {
+                loginBtn.classList.remove('hidden');
+                logoutBtn.classList.add('hidden');
+                userInfo.classList.add('hidden');
+                document.body.classList.remove('admin-mode');
+            }
+            renderMatches();
+        }
 
         function init() {
+            // Setup matchday select
             const select = document.getElementById('matchdaySelect');
-            for(let i=1; i<=9; i++) {
+            for(let i = 1; i <= 9; i++) {
                 let opt = document.createElement('option');
                 opt.value = i;
                 opt.innerHTML = `Matchday ${i}`;
                 select.appendChild(opt);
             }
-            if (isAdmin) document.body.classList.add('admin-mode');
-            updateUI();
-            renderMatches();
-            updateTable();
-        }
-
-        // Admin Logic
-        function toggleAdmin() {
-            document.getElementById('passwordModal').style.display = 'flex';
-            document.getElementById('adminPassword').focus();
-        }
-
-        function closeModal() {
-            document.getElementById('passwordModal').style.display = 'none';
-            document.getElementById('errorMsg').classList.add('hidden');
-            document.getElementById('adminPassword').value = '';
-        }
-
-        function checkPassword() {
-            const pass = document.getElementById('adminPassword').value;
-            if (pass === ADMIN_PASSWORD) {
-                isAdmin = true;
-                sessionStorage.setItem('isAdmin', 'true');
-                document.body.classList.add('admin-mode');
-                updateUI();
-                closeModal();
-                renderMatches();
-            } else {
-                document.getElementById('errorMsg').classList.remove('hidden');
-            }
-        }
-
-        function logout() {
-            isAdmin = false;
-            sessionStorage.removeItem('isAdmin');
-            document.body.classList.remove('admin-mode');
-            updateUI();
-            renderMatches();
-        }
-
-        function updateUI() {
-            document.getElementById('adminBtn').classList.toggle('hidden', isAdmin);
-            document.getElementById('logoutBtn').classList.toggle('hidden', !isAdmin);
-        }
-
-        function resetData() {
-            if (confirm("Are you sure you want to delete ALL scores? This cannot be undone.")) {
-                scores = {};
-                localStorage.removeItem('tournament_scores');
-                renderMatches();
-                updateTable();
-            }
+            
+            // Auth state listener
+            auth.onAuthStateChanged((user) => {
+                updateAuthUI(user);
+            });
+            
+            // Setup real-time sync
+            setupRealtimeSync();
         }
 
         function renderMatches() {
             const day = document.getElementById('matchdaySelect').value;
             const container = document.getElementById('matchesContainer');
+            if (!container) return;
             container.innerHTML = '';
 
             fixtures[day].forEach((match, index) => {
@@ -226,11 +422,13 @@
                     <div class="flex-1 text-right pr-6 font-bold text-gray-800 text-lg">${match[0]}</div>
                     
                     <div class="admin-only items-center gap-4 bg-gray-50 p-2 rounded-xl border border-gray-200">
-                        <input type="number" value="${s1}" oninput="saveScore('${matchId}', 's1', this.value)" 
-                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner">
+                        <input type="number" value="${s1}" onchange="saveScoreToRealtimeDB('${matchId}', 's1', this.value)" 
+                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner"
+                               placeholder="-">
                         <span class="text-gray-400 font-black text-xs uppercase">VS</span>
-                        <input type="number" value="${s2}" oninput="saveScore('${matchId}', 's2', this.value)" 
-                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner">
+                        <input type="number" value="${s2}" onchange="saveScoreToRealtimeDB('${matchId}', 's2', this.value)" 
+                               class="w-12 h-12 text-center bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 shadow-inner"
+                               placeholder="-">
                     </div>
 
                     <div class="viewer-only items-center justify-center min-w-[80px] bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 font-black text-xl ${isPlayed ? 'text-blue-700' : 'text-gray-400'}">
@@ -243,24 +441,16 @@
             });
         }
 
-        function saveScore(matchId, playerKey, value) {
-            if (!scores[matchId]) scores[matchId] = { s1: '', s2: '' };
-            scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
-            // Persistent Storage
-            localStorage.setItem('tournament_scores', JSON.stringify(scores));
-            updateTable();
-        }
-
         function updateTable() {
             let stats = {};
             players.forEach(p => stats[p] = { played: 0, w: 0, d: 0, l: 0, pts: 0, gd: 0 });
 
             Object.keys(scores).forEach(matchId => {
                 const [day, index] = matchId.split('-');
-                const match = fixtures[day][index];
+                const match = fixtures[day]?.[parseInt(index)];
                 const s = scores[matchId];
 
-                if (s.s1 !== '' && s.s2 !== '' && s.s1 !== null && s.s2 !== null) {
+                if (match && s && s.s1 !== '' && s.s2 !== '' && s.s1 !== null && s.s2 !== null) {
                     const p1 = match[0];
                     const p2 = match[1];
 
@@ -290,6 +480,7 @@
             });
             
             const tbody = document.getElementById('pointsTableBody');
+            if (!tbody) return;
             tbody.innerHTML = '';
             sortedPlayers.forEach((p, idx) => {
                 const s = stats[p];
@@ -310,7 +501,20 @@
             });
         }
 
-        window.onload = init;
+        // Make functions globally available
+        window.saveScoreToRealtimeDB = saveScoreToRealtimeDB;
+        window.resetAllScores = resetAllScores;
+        window.showLoginModal = showLoginModal;
+        window.closeLoginModal = closeLoginModal;
+        window.showSignupModal = showSignupModal;
+        window.closeSignupModal = closeSignupModal;
+        window.loginWithEmail = loginWithEmail;
+        window.signup = signup;
+        window.logout = logout;
+        window.renderMatches = renderMatches;
+
+        // Start the app
+        init();
     </script>
 </body>
 </html>
