@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tournament Manager & Standings</title>
+    <title>🏆 Tournament Manager - Live Scores</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -11,46 +11,21 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .match-card { transition: all 0.2s ease; }
+        .match-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .admin-only { display: none; }
+        body.admin-mode .admin-only { display: flex; }
+        body.admin-mode .viewer-only { display: none; }
+        .toast { transition: opacity 0.3s ease; }
+        .live-badge {
+            animation: pulse 2s infinite;
         }
-        .match-card {
-            transition: all 0.2s ease;
-        }
-        .match-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        .admin-only {
-            display: none;
-        }
-        body.admin-mode .admin-only {
-            display: flex;
-        }
-        body.admin-mode .viewer-only {
-            display: none;
-        }
-        .toast {
-            transition: opacity 0.3s ease;
-        }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
         }
     </style>
 </head>
@@ -58,16 +33,21 @@
     <div class="max-w-6xl mx-auto">
         <!-- Header -->
         <header class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-            <div class="text-center md:text-left">
+            <div>
                 <h1 class="text-4xl font-extrabold text-gray-900 mb-2">🏆 Tournament Manager</h1>
-                <p class="text-gray-500 uppercase tracking-widest text-sm font-semibold">Match Fixtures & League Standings</p>
-                <p id="liveStatus" class="text-xs text-green-600 mt-1 hidden">🔴 Live updates active</p>
+                <p class="text-gray-500 uppercase tracking-widest text-sm font-semibold">Live Match Fixtures & Standings</p>
+                <div id="liveStatus" class="hidden mt-2">
+                    <span class="live-badge inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                        <span class="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
+                        🔴 Live Updates Active
+                    </span>
+                </div>
             </div>
             
             <!-- Auth Controls -->
             <div id="authControls" class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border">
                 <div id="userInfo" class="text-sm text-gray-600 hidden mr-2">
-                    👤 <span id="userEmail"></span>
+                    👤 <span id="userEmail" class="font-medium"></span>
                 </div>
                 <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
                     🔐 Admin Login
@@ -98,15 +78,15 @@
 
             <!-- Right Side: Points Table -->
             <div class="lg:col-span-1">
-                <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-4">
                     <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-5">
                         <h2 class="text-white font-bold text-xl flex items-center gap-2">
                             <span>📊</span> Standings
                         </h2>
                     </div>
-                    <div class="overflow-x-auto">
+                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
                         <table class="w-full text-sm text-left">
-                            <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                            <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b sticky top-0">
                                 <tr>
                                     <th class="px-4 py-4">Player</th>
                                     <th class="px-2 py-4 text-center">P</th>
@@ -121,7 +101,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="p-4 bg-gray-50 text-xs text-gray-400 text-center italic">
+                    <div class="p-4 bg-gray-50 text-xs text-gray-400 text-center italic border-t">
                         Win: 3 | Draw: 1 | Loss: 0
                     </div>
                 </div>
@@ -143,8 +123,8 @@
             <input type="email" id="loginEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
             <input type="password" id="loginPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password">
             <div class="flex gap-2">
-                <button onclick="closeLoginModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold">Cancel</button>
-                <button onclick="loginWithEmail()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold">Login</button>
+                <button onclick="closeLoginModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200 transition">Cancel</button>
+                <button onclick="loginWithEmail()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">Login</button>
             </div>
             <p id="loginError" class="text-red-500 text-xs mt-2 hidden"></p>
             <hr class="my-4">
@@ -161,8 +141,8 @@
             <input type="email" id="signupEmail" class="w-full p-3 border rounded-xl mb-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Email">
             <input type="password" id="signupPassword" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Password (min 6 chars)">
             <div class="flex gap-2">
-                <button onclick="closeSignupModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold">Cancel</button>
-                <button onclick="signup()" class="flex-1 py-2 bg-green-600 text-white rounded-lg font-semibold">Sign Up</button>
+                <button onclick="closeSignupModal()" class="flex-1 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200 transition">Cancel</button>
+                <button onclick="signup()" class="flex-1 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition">Sign Up</button>
             </div>
             <p id="signupError" class="text-red-500 text-xs mt-2 hidden"></p>
         </div>
@@ -174,16 +154,16 @@
     </div>
 
     <script>
-        // ========== FIREBASE CONFIG ==========
+        // ========== YOUR CORRECT FIREBASE CONFIG ==========
         const firebaseConfig = {
-            apiKey: "AIzaSyBPkmaWlwad7Vn5Rz1NzV-mLZgM4hV7xIg",
+            apiKey: "AIzaSyBPkmaWLWad7Vn5RzlnZv-mLZgMaHv7xIg",
             authDomain: "e-war-5f8a6.firebaseapp.com",
+            databaseURL: "https://e-war-5f8a6-default-rtdb.firebaseio.com",
             projectId: "e-war-5f8a6",
             storageBucket: "e-war-5f8a6.firebasestorage.app",
             messagingSenderId: "628352167173",
-            appId: "1:628352167173:web:74443d3cca25a1ae695b6c",
-            measurementId: "G-JKCQKf6FY7",
-            databaseURL: "https://e-war-5f86-default-rtdb.firebaseio.com/"
+            appId: "1:628352167173:web:744a3d3cca25a1ae695b6c",
+            measurementId: "G-JKCQKF6FY7"
         };
 
         // Initialize Firebase
@@ -280,7 +260,7 @@
         function setupRealtimeSync() {
             const scoresRef = database.ref('tournament/scores');
             
-            // Listen for real-time changes
+            // Listen for real-time changes from Firebase
             scoresRef.on('value', (snapshot) => {
                 if (!isUpdating) {
                     const data = snapshot.val();
@@ -302,8 +282,7 @@
         async function saveScoreToRealtimeDB(matchId, playerKey, value) {
             if (!currentUser) {
                 showToast('❌ Please login to update scores', 'error');
-                // Reset the input value
-                renderMatches();
+                renderMatches(); // Reset the input
                 return false;
             }
             
@@ -314,7 +293,7 @@
             scores[matchId][playerKey] = value === '' ? '' : parseInt(value);
             
             try {
-                // Save to Realtime Database
+                // Save to Firebase Realtime Database
                 await database.ref('tournament/scores').set(scores);
                 showToast('✅ Score saved! Everyone can see it now.', 'success');
                 return true;
@@ -373,7 +352,6 @@
                 userInfo.classList.remove('hidden');
                 userEmailSpan.textContent = user.email;
                 document.body.classList.add('admin-mode');
-                showToast(`Welcome ${user.email.split('@')[0]}! You can now edit scores.`, 'success');
             } else {
                 loginBtn.classList.remove('hidden');
                 logoutBtn.classList.add('hidden');
@@ -450,7 +428,7 @@
                 const match = fixtures[day]?.[parseInt(index)];
                 const s = scores[matchId];
 
-                if (match && s && s.s1 !== '' && s.s2 !== '' && s.s1 !== null && s.s2 !== null) {
+                if (match && s && s.s1 !== '' && s.s2 !== '' && s.s1 !== null && s.s2 !== null && !isNaN(s.s1) && !isNaN(s.s2)) {
                     const p1 = match[0];
                     const p2 = match[1];
 
