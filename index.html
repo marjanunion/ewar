@@ -27,29 +27,7 @@
         .role-super { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
         .role-admin { background: linear-gradient(135deg, #60a5fa, #3b82f6); color: white; }
         .login-card { transition: all 0.3s ease; }
-        .login-card:hover { transform: translateY(-2px); }
-        /* Password change panel styles */
-        .password-panel {
-            background: #fef9e3;
-            border: 1px solid #fde047;
-            border-radius: 1rem;
-            padding: 1rem;
-            margin-top: 1rem;
-            transition: all 0.2s;
-        }
-        .password-panel input {
-            font-size: 0.9rem;
-            padding: 0.5rem;
-            border-radius: 0.75rem;
-            border: 1px solid #e2e8f0;
-        }
-        .toggle-panel-btn {
-            background: #f3f4f6;
-            transition: all 0.2s;
-        }
-        .toggle-panel-btn:hover {
-            background: #e5e7eb;
-        }
+        .error-panel { background: #fee2e2; border-left: 4px solid #dc2626; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -81,6 +59,23 @@
                 </button>
             </div>
         </header>
+
+        <!-- Permission Error Banner -->
+        <div id="permissionError" class="hidden mb-6 p-4 bg-red-50 border border-red-200 rounded-xl error-panel">
+            <div class="flex items-start gap-3">
+                <div class="text-red-600 text-xl">⚠️</div>
+                <div class="flex-1">
+                    <h3 class="font-bold text-red-800 mb-1">Database Permission Error</h3>
+                    <p class="text-sm text-red-700 mb-2">Unable to write to Firebase database. Please update your security rules:</p>
+                    <ol class="text-xs text-red-600 space-y-1 ml-4 list-decimal">
+                        <li>Go to <a href="https://console.firebase.google.com/project/e-war-5f8a6/database/e-war-5f8a6-default-rtdb/rules" target="_blank" class="text-blue-600 underline">Firebase Console → Realtime Database → Rules</a></li>
+                        <li>Replace rules with: <code class="bg-red-100 px-1 rounded">{ "rules": { "tournament": { ".read": true, ".write": true } } }</code></li>
+                        <li>Click "Publish"</li>
+                    </ol>
+                </div>
+                <button onclick="document.getElementById('permissionError').classList.add('hidden')" class="text-red-400 hover:text-red-600">✕</button>
+            </div>
+        </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <!-- Left Side: Match Fixtures -->
@@ -167,7 +162,6 @@
         <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl login-card">
             <h3 class="text-xl font-bold mb-4 text-center">🔐 Admin Access</h3>
             
-            <!-- Password hints completely removed as requested -->
             <div class="mb-4 text-center text-gray-500 text-xs">
                 <span>Enter credentials to continue</span>
             </div>
@@ -202,11 +196,9 @@
         const database = firebase.database();
 
         // ========== PASSWORD MANAGEMENT ==========
-        // Default passwords (they will be overwritten by Firebase if stored)
         let SUPER_ADMIN_PASSWORD = "10";
         let ADMIN_PASSWORD = "30";
         
-        // Store passwords in Firebase under 'tournament/config' so they persist after page refresh
         async function loadPasswordsFromFirebase() {
             const configRef = database.ref('tournament/config');
             try {
@@ -216,17 +208,26 @@
                     if (config.superAdminPassword) SUPER_ADMIN_PASSWORD = config.superAdminPassword;
                     if (config.adminPassword) ADMIN_PASSWORD = config.adminPassword;
                 } else {
-                    // Initialize with defaults if not exist
-                    await configRef.set({
-                        superAdminPassword: SUPER_ADMIN_PASSWORD,
-                        adminPassword: ADMIN_PASSWORD
-                    });
+                    try {
+                        await configRef.set({
+                            superAdminPassword: SUPER_ADMIN_PASSWORD,
+                            adminPassword: ADMIN_PASSWORD
+                        });
+                    } catch (error) {
+                        console.error("Cannot write config initially:", error);
+                        showPermissionError();
+                    }
                 }
-                console.log("Passwords loaded from secure storage");
             } catch (error) {
                 console.error("Error loading passwords:", error);
-                showToast("⚠️ Could not load security config", "error");
+                if (error.code === 'PERMISSION_DENIED') {
+                    showPermissionError();
+                }
             }
+        }
+        
+        function showPermissionError() {
+            document.getElementById('permissionError').classList.remove('hidden');
         }
         
         async function updateSuperAdminPassword(oldPwd, newPwd) {
@@ -245,6 +246,10 @@
                 return { success: true, message: "Super Admin password updated successfully!" };
             } catch (error) {
                 console.error(error);
+                if (error.code === 'PERMISSION_DENIED') {
+                    showPermissionError();
+                    return { success: false, message: "Permission denied! Please update Firebase security rules (see banner above)" };
+                }
                 return { success: false, message: "Database error: could not save new password" };
             }
         }
@@ -370,9 +375,11 @@
                     scores = data || {};
                     renderMatches();
                     updateTable();
-                    if (!currentRole) {
-                        showToast('🔄 Scores updated!', 'info');
-                    }
+                }
+            }, (error) => {
+                console.error("Realtime sync error:", error);
+                if (error.code === 'PERMISSION_DENIED') {
+                    showPermissionError();
                 }
             });
             document.getElementById('liveStatus').classList.remove('hidden');
@@ -392,7 +399,13 @@
                 showToast('✅ Score saved! Live update complete.', 'success');
                 return true;
             } catch (error) {
-                showToast('❌ Failed to save: ' + error.message, 'error');
+                console.error("Save error:", error);
+                if (error.code === 'PERMISSION_DENIED') {
+                    showPermissionError();
+                    showToast('❌ Permission denied! Please check Firebase security rules.', 'error');
+                } else {
+                    showToast('❌ Failed to save: ' + error.message, 'error');
+                }
                 return false;
             } finally {
                 isUpdating = false;
@@ -413,7 +426,13 @@
                     updateTable();
                     showToast('🗑️ All scores have been reset!', 'success');
                 } catch (error) {
-                    showToast('❌ Failed to reset: ' + error.message, 'error');
+                    console.error("Reset error:", error);
+                    if (error.code === 'PERMISSION_DENIED') {
+                        showPermissionError();
+                        showToast('❌ Permission denied! Update Firebase security rules to fix this.', 'error');
+                    } else {
+                        showToast('❌ Failed to reset: ' + error.message, 'error');
+                    }
                 } finally {
                     isUpdating = false;
                 }
@@ -432,12 +451,18 @@
                     try {
                         await database.ref('tournament').remove();
                         scores = {};
-                        await loadPasswordsFromFirebase(); // re-initialize config after wipe
+                        await loadPasswordsFromFirebase();
                         renderMatches();
                         updateTable();
                         showToast('💀 All data has been permanently deleted!', 'error');
                     } catch (error) {
-                        showToast('❌ Failed to clear: ' + error.message, 'error');
+                        console.error("Clear error:", error);
+                        if (error.code === 'PERMISSION_DENIED') {
+                            showPermissionError();
+                            showToast('❌ Permission denied! Update Firebase security rules.', 'error');
+                        } else {
+                            showToast('❌ Failed to clear: ' + error.message, 'error');
+                        }
                     } finally {
                         isUpdating = false;
                     }
@@ -447,7 +472,6 @@
             }
         }
         
-        // Password Change Handler for Super Admin
         async function changeSuperAdminPassword() {
             if (currentRole !== 'super') {
                 showToast('❌ Only Super Admin can change the password', 'error');
@@ -501,7 +525,6 @@
             }
         }
 
-        // ========== UI RENDER ==========
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
             const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔄';
@@ -509,7 +532,7 @@
             toast.classList.remove('hidden');
             setTimeout(() => {
                 toast.classList.add('hidden');
-            }, 2500);
+            }, 3000);
         }
 
         function renderMatches() {
@@ -598,7 +621,7 @@
                         <td class="px-2 py-4 text-center font-bold text-amber-500">${s.d}</td>
                         <td class="px-2 py-4 text-center font-bold text-red-500">${s.l}</td>
                         <td class="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/50">${s.pts}</td>
-                     </tr>`;
+                      </tr>`;
                 tbody.innerHTML += row;
             });
         }
