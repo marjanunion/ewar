@@ -410,5 +410,56 @@
             </div>
         </div>
     </div>
+            </div> <!-- Closes the sticky header in detail-view -->
+        
+        <!-- Container for dynamically rendered tabs (Teams, Matches, Standings) -->
+        <div id="tab-content" class="p-5 mt-2"></div>
+    </main>
+
+    <!-- Floating Action Button (FAB) -->
+    <button id="fab" onclick="openCreateModal()" class="fixed bottom-6 right-6 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 hover:scale-105 transition-transform z-50">
+        <i data-lucide="plus" class="text-slate-950 w-6 h-6"></i>
+    </button>
+
+    <!-- Create Arena Modal -->
+    <div id="create-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm animate-slide-up">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">New <span class="text-emerald-400">Arena</span></h3>
+                <button onclick="closeCreateModal()" class="text-slate-500 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Arena Name</label>
+                    <input id="new-name" type="text" placeholder="e.g. Weekly Scrims" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm focus:border-emerald-500 outline-none transition-colors text-white">
+                </div>
+                
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Format</label>
+                    <select id="new-format" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm focus:border-emerald-500 outline-none transition-colors text-white appearance-none">
+                        <option value="League">League</option>
+                        <option value="Knockout">Knockout</option>
+                        <option value="Groups">Groups</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Password (Optional)</label>
+                    <input id="new-password" type="password" placeholder="Leave blank for public" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm focus:border-emerald-500 outline-none transition-colors text-white">
+                </div>
+                
+                <button onclick="createTournament()" class="w-full bg-emerald-500 text-slate-950 font-black uppercase text-sm py-4 rounded-xl mt-2 hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20">
+                    Create Arena
+                </button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+
 </body>
 </html>
