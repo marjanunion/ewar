@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>eWAR | Global Arena - Real-time eSports Manager</title>
-    <!-- Tailwind + Lucide + Firebase -->
+    <!-- Tailwind + Lucide -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -24,21 +25,28 @@
 </head>
 <body class="min-h-screen pb-28">
 
-    <!-- Firebase Config (Replace with YOUR config) -->
+    <!-- Firebase Configuration - YOUR ACTUAL CONFIG -->
     <script>
-        // ================= 🔥 IMPORTANT: REPLACE WITH YOUR FIREBASE CONFIG =================
+        // Your Firebase configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyB8B7E4qNtT1KJc2L9xG6fWpX0zYvR8kQo",   // <-- replace with your actual API key
-            authDomain: "ewar-arena.firebaseapp.com",        // <-- replace with your project id
-            databaseURL: "https://ewar-arena-default-rtdb.firebaseio.com", // <-- RTDB URL
-            projectId: "ewar-arena",
-            storageBucket: "ewar-arena.appspot.com",
-            messagingSenderId: "123456789012",
-            appId: "1:123456789012:web:abcdef123456"
+            apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
+            authDomain: "ewar-fa1db.firebaseapp.com",
+            projectId: "ewar-fa1db",
+            storageBucket: "ewar-fa1db.firebasestorage.app",
+            messagingSenderId: "287555570705",
+            appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
+            measurementId: "G-3P3RYNZXL0",
+            databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com"  // Realtime Database URL
         };
-        // Initialize Firebase (if not already)
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const db = firebase.database();
+        
+        // Test database connection
+        console.log("🔥 Firebase initialized with project:", firebaseConfig.projectId);
     </script>
 
     <!-- Navigation -->
@@ -108,7 +116,7 @@
         </div>
 
         <!-- Tab navigation -->
-        <div class="flex bg-slate-900/40 border-b border-slate-800 sticky top-[138px] z-40 backdrop-blur-md overflow-x-auto no-scrollbar">
+        <div class="flex bg-slate-900/40 border-b border-slate-800 sticky top-[138px] z-40 backdrop-blur-md overflow-x-auto no-scrollbar" id="tab-bar">
             <button onclick="switchTab('teams')" data-tab="teams" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest transition-all text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5">Teams</button>
             <button onclick="switchTab('matches')" data-tab="matches" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-slate-500">Matches</button>
             <button onclick="switchTab('standings')" data-tab="standings" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-slate-500">Standings</button>
@@ -166,19 +174,23 @@
 
     <script>
         // ---------- GLOBAL STATE ----------
-        let currentRoomId = null;          // active room being viewed
-        let currentRoomRef = null;          // Firebase reference
-        let currentRoomPassword = null;      // stored for verification
-        let localTournamentCache = null;     // latest data snapshot
-        let pendingJoinId = null;             // room trying to join
+        let currentRoomId = null;
+        let currentRoomRef = null;
+        let currentRoomPassword = null;
+        let localTournamentCache = null;
+        let pendingJoinId = null;
+        let currentTab = 'teams';
 
-        // Helper: re-render dashboard from realtime DB
+        // Helper: fetch all rooms from Firebase
         function fetchAllRooms() {
             const roomsRef = firebase.database().ref('tournaments');
             roomsRef.once('value', (snap) => {
                 const data = snap.val() || {};
                 const roomsList = Object.entries(data).map(([id, val]) => ({ id, ...val }));
                 renderTournamentList(roomsList);
+            }).catch(err => {
+                console.error("Error fetching rooms:", err);
+                document.getElementById('tournament-list').innerHTML = `<div class="py-16 text-center border-2 border-dashed border-red-800 rounded-2xl"><p class="text-red-500 text-xs font-bold">⚠️ Database connection error. Check Firebase rules.</p></div>`;
             });
         }
 
@@ -247,19 +259,26 @@
         }
 
         function joinRoomDirect(roomId) {
-            if (currentRoomRef) currentRoomRef.off(); // detach old listener
+            if (currentRoomRef) currentRoomRef.off();
             currentRoomId = roomId;
             currentRoomRef = firebase.database().ref(`tournaments/${roomId}`);
-            // real-time sync
+            
             currentRoomRef.on('value', (snapshot) => {
                 const data = snapshot.val();
-                if (!data) { alert("Room vanished"); showDashboard(); return; }
+                if (!data) { 
+                    alert("Room vanished or deleted"); 
+                    showDashboard(); 
+                    return; 
+                }
                 localTournamentCache = { id: roomId, ...data };
-                // if currently inside detail view, refresh UI
                 if (document.getElementById('detail-view') && !document.getElementById('detail-view').classList.contains('hidden')) {
                     refreshDetailUI();
                 }
+            }, (error) => {
+                console.error("Realtime error:", error);
+                alert("Connection error. Check Firebase rules are set to read/write true.");
             });
+            
             showDetailUI();
         }
 
@@ -281,7 +300,10 @@
         }
 
         function showDashboard() {
-            if (currentRoomRef) { currentRoomRef.off(); currentRoomRef = null; }
+            if (currentRoomRef) { 
+                currentRoomRef.off(); 
+                currentRoomRef = null; 
+            }
             currentRoomId = null;
             document.getElementById('dashboard-view').classList.remove('hidden');
             document.getElementById('detail-view').classList.add('hidden');
@@ -289,11 +311,10 @@
             fetchAllRooms();
         }
 
-        // ----- Tab & Data Operations (persist to Firebase)-----
-        let currentTab = 'teams';
         function switchTab(tab) {
             currentTab = tab;
-            document.querySelectorAll('#tab-bar button').forEach(btn => {
+            const buttons = document.querySelectorAll('#tab-bar button');
+            buttons.forEach(btn => {
                 if (btn.dataset.tab === tab) {
                     btn.className = "flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5";
                 } else {
@@ -307,9 +328,9 @@
             const t = localTournamentCache;
             if (!t) return;
             const container = document.getElementById('tab-content');
+            
             if (currentTab === 'teams') {
                 const teamsList = t.teams || [];
-                const canEdit = true; // admin any viewer (anyone can manage, but simplifies for demo)
                 container.innerHTML = `
                     <div class="space-y-5">
                         <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-3">
@@ -349,12 +370,11 @@
             }
             else if (currentTab === 'standings') {
                 const stats = calculateStatsFromCache();
-                container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl overflow-x-auto"><table class="w-full text-left min-w-[320px]"><thead><tr class="text-[9px] font-black text-slate-400 border-b border-slate-800"><th class="pb-3">Team</th><th class="text-center">P</th><th class="text-center">GD</th><th class="text-center">PTS</th></tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-b border-slate-800/30"><td class="py-3 font-bold text-sm">${escapeHtml(name)}</td><td class="text-center text-slate-300 text-xs">${s.p}</td><td class="text-center text-slate-300">${s.gd}</td><td class="text-center text-emerald-400 font-black">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
+                container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl overflow-x-auto"><table class="w-full text-left min-w-[320px]"><thead><tr class="text-[9px] font-black text-slate-400 border-b border-slate-800"><th class="pb-3">Team</th><th class="text-center">P</th><th class="text-center">GD</th><th class="text-center">PTS</th><tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-b border-slate-800/30"><td class="py-3 font-bold text-sm">${escapeHtml(name)}</td><td class="text-center text-slate-300 text-xs">${s.p}</td><td class="text-center text-slate-300">${s.gd}</td><td class="text-center text-emerald-400 font-black">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
             }
             lucide.createIcons();
         }
 
-        // helpers for standings
         function calculateStatsFromCache() {
             const t = localTournamentCache;
             const teams = t.teams || [];
@@ -376,7 +396,6 @@
             return Object.entries(statsMap).sort((a,b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd);
         }
 
-        // Firebase update functions
         async function updateTournamentData(updatedFields) {
             if (!currentRoomId) return;
             const ref = firebase.database().ref(`tournaments/${currentRoomId}`);
@@ -482,9 +501,26 @@
             }
         }
 
-        function openCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); document.getElementById('create-modal').classList.add('flex'); }
-        function closeCreateModal() { document.getElementById('create-modal').classList.add('hidden'); document.getElementById('create-modal').classList.remove('flex'); document.getElementById('new-password').value = ''; }
-        function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+        function openCreateModal() { 
+            document.getElementById('create-modal').classList.remove('hidden'); 
+            document.getElementById('create-modal').classList.add('flex'); 
+        }
+        
+        function closeCreateModal() { 
+            document.getElementById('create-modal').classList.add('hidden'); 
+            document.getElementById('create-modal').classList.remove('flex'); 
+            document.getElementById('new-password').value = ''; 
+        }
+        
+        function escapeHtml(str) { 
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m){
+                if(m==='&') return '&amp;'; 
+                if(m==='<') return '&lt;'; 
+                if(m==='>') return '&gt;'; 
+                return m;
+            }); 
+        }
 
         window.onload = () => {
             fetchAllRooms();
