@@ -1,0 +1,690 @@
+
+```react
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc 
+} from 'firebase/firestore';
+import { 
+  Plus, 
+  ArrowLeft, 
+  Trash2, 
+  Lock, 
+  Trophy, 
+  Users, 
+  ChevronRight,
+  LogOut,
+  User,
+  ShieldCheck,
+  Search,
+  LayoutDashboard,
+  RotateCcw,
+  AlertTriangle,
+  Layers
+} from 'lucide-react';
+
+// Firebase configuration using environment-provided global
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ewar-social-v2';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [tournaments, setTournaments] = useState([]);
+  const [activeT, setActiveT] = useState(null);
+  const [view, setView] = useState('dashboard'); 
+  const [tab, setTab] = useState('teams'); 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [passPrompt, setPassPrompt] = useState({ show: false, tid: null, input: '' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // --- AUTHENTICATION FLOW ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth Error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // --- FIRESTORE SYNC ---
+  useEffect(() => {
+    if (!user) return;
+    const q = collection(db, 'artifacts', appId, 'public', 'data', 'tournaments');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setTournaments(docs);
+      setActiveT(prev => {
+        if (!prev) return null;
+        const found = docs.find(x => x.id === prev.id);
+        return found || null;
+      });
+    }, (err) => console.error("Snapshot Error:", err));
+    return () => unsubscribe();
+  }, [user]);
+
+  // --- HELPERS ---
+  const isGrouped = activeT?.format?.includes('Group');
+
+  // --- BUSINESS LOGIC ---
+  const addTeam = async (name) => {
+    if (!name.trim() || isSaving) return;
+    const exists = activeT.teams?.some(t => t.name.toLowerCase() === name.trim().toLowerCase());
+    if (exists) return;
+    setIsSaving(true);
+    const updatedTeams = [...(activeT.teams || []), { 
+      name: name.trim(), 
+      id: crypto.randomUUID()
+    }];
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', activeT.id), {
+      teams: updatedTeams
+    });
+    setIsSaving(false);
+  };
+
+  const removeTeam = async (id) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    const updatedTeams = activeT.teams.filter(t => t.id !== id);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', activeT.id), {
+      teams: updatedTeams
+    });
+    setIsSaving(false);
+  };
+
+  const setScore = async (idx, s1, s2) => {
+    const val1 = s1 === "" ? null : Number(s1);
+    const val2 = s2 === "" ? null : Number(s2);
+    if (s1 !== undefined && isNaN(val1)) return;
+    if (s2 !== undefined && isNaN(val2)) return;
+    
+    const newMatches = [...activeT.matches];
+    if (s1 !== undefined) newMatches[idx].s1 = val1;
+    if (s2 !== undefined) newMatches[idx].s2 = val2;
+    
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', activeT.id), {
+      matches: newMatches
+    });
+  };
+
+  const resetTournament = async () => {
+    if (isSaving || activeT.creator !== user.uid) return;
+    setIsSaving(true);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', activeT.id), {
+      matches: [],
+      currentRound: 1,
+      knockoutStarted: false,
+      groupAssignments: null // Reset groups too
+    });
+    setShowResetModal(false);
+    setTab('teams');
+    setIsSaving(false);
+  };
+
+  const generateStage = async () => {
+    if (isGrouped && (activeT.teams.length < 4)) return;
+
+    setIsSaving(true);
+    const matches = [];
+    const teams = [...activeT.teams].sort(() => Math.random() - 0.5);
+    const legs = activeT.format.includes('2 Legs') ? 2 : 1;
+    const groupAssignments = {}; // Store which team belongs to which group
+
+    if (isGrouped) {
+      let remaining = [...teams];
+      let groupIdx = 0;
+      const totalTeams = teams.length;
+      let groupCount = totalTeams > 8 ? Math.floor(totalTeams / 4) : 2;
+      if (totalTeams === 6) groupCount = 2; 
+
+      const teamsPerGroup = Math.ceil(totalTeams / groupCount);
+      
+      while (remaining.length > 0) {
+        groupIdx++;
+        const group = remaining.splice(0, teamsPerGroup);
+        group.forEach(t => groupAssignments[t.name] = groupIdx);
+
+        for (let i = 0; i < group.length; i++) {
+          for (let j = i + 1; j < group.length; j++) {
+            for (let l = 0; l < legs; l++) {
+              matches.push({
+                id: crypto.randomUUID(),
+                t1: group[i].name,
+                t2: group[j].name,
+                s1: null,
+                s2: null,
+                stage: 'Group Stage',
+                grp: groupIdx
+              });
+            }
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < teams.length; i++) {
+        for (let j = i + 1; j < teams.length; j++) {
+          for (let l = 0; l < legs; l++) {
+            matches.push({
+              id: crypto.randomUUID(),
+              t1: teams[i].name,
+              t2: teams[j].name,
+              s1: null,
+              s2: null,
+              stage: 'League'
+            });
+          }
+        }
+      }
+    }
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', activeT.id), {
+      matches,
+      groupAssignments,
+      currentRound: 1,
+      knockoutStarted: false
+    });
+    setIsSaving(false);
+  };
+
+  const getStats = (teams, matches, filterGroup = null) => {
+    const s = {};
+    const relevantTeams = filterGroup 
+      ? teams.filter(t => activeT.groupAssignments?.[t.name] === filterGroup)
+      : teams;
+
+    relevantTeams.forEach(t => s[t.name] = { pts: 0, gd: 0, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
+    
+    matches.forEach(m => {
+      if (s[m.t1] && s[m.t2] && m.s1 !== null && m.s2 !== null) {
+        s[m.t1].p++; s[m.t2].p++;
+        s[m.t1].gf += m.s1; s[m.t1].ga += m.s2;
+        s[m.t2].gf += m.s2; s[m.t2].ga += m.s1;
+        s[m.t1].gd = s[m.t1].gf - s[m.t1].ga;
+        s[m.t2].gd = s[m.t2].gf - s[m.t2].ga;
+        if (m.s1 > m.s2) { s[m.t1].pts += 3; s[m.t1].w++; s[m.t2].l++; }
+        else if (m.s2 > m.s1) { s[m.t2].pts += 3; s[m.t2].w++; s[m.t1].l++; }
+        else { s[m.t1].pts += 1; s[m.t2].pts += 1; s[m.t1].d++; s[m.t2].d++; }
+      }
+    });
+    return Object.entries(s).sort((a, b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd || b[1].gf - a[1].gf);
+  };
+
+  const sortedTournaments = useMemo(() => {
+    return [...tournaments]
+      .filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [tournaments, searchTerm]);
+
+  // UI rendering conditions
+  const availableTabs = ['teams'];
+  if (isGrouped && activeT?.groupAssignments) availableTabs.push('groups');
+  availableTabs.push('matches', 'standings');
+
+  if (!user) return (
+    <div className="min-h-screen bg-[#0a0f18] flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-16 h-16 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-4" />
+      <div className="text-emerald-500 font-black tracking-widest text-xs uppercase animate-pulse">Initializing eWAR Cloud...</div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#0a0f18] text-slate-100 font-sans selection:bg-emerald-500/30">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-[60] bg-[#0a0f18]/80 backdrop-blur-xl border-b border-slate-800/50 px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
+          <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20 rotate-3 transition-transform hover:rotate-0">
+            <Trophy className="text-slate-900 w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="font-black italic text-xl leading-tight tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">eWAR</h1>
+            <p className="text-[9px] font-bold text-slate-500 tracking-[0.2em] uppercase -mt-1">Social Hub v2</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+            <User className="w-3 h-3 text-emerald-500" />
+            <span className="text-[10px] font-mono text-slate-400">{user.uid.slice(0, 8)}</span>
+          </div>
+          <button onClick={() => window.location.reload()} className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 hover:bg-red-500/10 hover:border-red-500/50 group transition-all">
+            <LogOut className="w-4 h-4 text-slate-500 group-hover:text-red-500" />
+          </button>
+        </div>
+      </nav>
+
+      {view === 'dashboard' ? (
+        <main className="max-w-2xl mx-auto p-6 space-y-8 pb-32">
+          {/* Hero Banner */}
+          <section className="relative overflow-hidden bg-slate-900 rounded-[2rem] p-8 border border-slate-800 shadow-2xl">
+            <div className="relative z-10">
+              <h2 className="text-3xl font-black mb-2 tracking-tight">System <span className="text-emerald-400">Stable.</span></h2>
+              <p className="text-slate-400 text-sm max-w-[240px] leading-relaxed">Global tournament data synced. Join or create a battlefield.</p>
+            </div>
+            <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-20 -mt-20"></div>
+          </section>
+
+          {/* Room List Header */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                    <LayoutDashboard className="w-3 h-3" /> Active Rooms
+                </h3>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                    <input 
+                        type="text" 
+                        placeholder="Search rooms..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-slate-900 border border-slate-800 py-2 pl-9 pr-4 rounded-full text-xs w-32 focus:w-48 focus:border-emerald-500 outline-none transition-all sm:w-40 sm:focus:w-56"
+                    />
+                </div>
+            </div>
+            
+            <div className="grid gap-3">
+              {sortedTournaments.map(t => (
+                <div 
+                  key={t.id}
+                  onClick={() => {
+                    if (t.password && t.creator !== user.uid) {
+                        setPassPrompt({ show: true, tid: t.id, input: '' });
+                    } else {
+                        setActiveT(t);
+                        setView('detail');
+                        setTab('teams');
+                    }
+                  }}
+                  className="group bg-slate-900/50 border border-slate-800/80 p-5 rounded-3xl flex justify-between items-center cursor-pointer hover:bg-slate-800 hover:border-emerald-500/30 transition-all active:scale-[0.98]"
+                >
+                  <div className="flex gap-4 items-center">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${t.password ? 'bg-amber-500/10' : 'bg-blue-500/10'}`}>
+                      {t.password ? <Lock className="w-5 h-5 text-amber-500" /> : <Users className="w-5 h-5 text-blue-500" />}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-base group-hover:text-emerald-400 transition-colors">{t.name}</h4>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        <span className="text-emerald-500/70">{t.format?.split(' (')[0]}</span>
+                        <span>•</span>
+                        <span>{t.teams?.length || 0} Teams</span>
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-700 group-hover:text-emerald-500 transition-colors" />
+                </div>
+              ))}
+              {sortedTournaments.length === 0 && (
+                <div className="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
+                  <p className="text-slate-600 text-xs font-black uppercase tracking-widest">No Active Arenas</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      ) : (
+        <div className="max-w-4xl mx-auto pb-32">
+          {/* Detail View Header */}
+          <div className="p-6 bg-[#0a0f18] border-b border-slate-800 sticky top-16 z-40 backdrop-blur-md">
+            <div className="flex justify-between items-start mb-4">
+                <button onClick={() => setView('dashboard')} className="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase hover:gap-3 transition-all">
+                <ArrowLeft className="w-3.5 h-3.5" /> Return to Dashboard
+                </button>
+                {activeT.creator === user.uid && activeT.matches?.length > 0 && (
+                    <button 
+                        onClick={() => setShowResetModal(true)}
+                        className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-500 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all"
+                    >
+                        <RotateCcw className="w-3 h-3" /> Reset Tournament
+                    </button>
+                )}
+            </div>
+            <div className="flex justify-between items-end">
+                <div>
+                    <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight flex items-center gap-2">
+                        {activeT.name} {activeT.password && <Lock className="w-4 h-4 text-amber-500" />}
+                    </h2>
+                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{activeT.format}</p>
+                </div>
+                {activeT.creator === user.uid && (
+                    <div className="flex items-center gap-1.5 bg-emerald-500 px-4 py-1.5 rounded-full text-slate-950 text-[10px] font-black uppercase shadow-lg shadow-emerald-500/20">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Moderator
+                    </div>
+                )}
+            </div>
+          </div>
+
+          {/* Tabs Navigation */}
+          <div className="flex bg-slate-900/50 border-b border-slate-800 sticky top-[168px] z-40 backdrop-blur-md overflow-x-auto no-scrollbar">
+            {availableTabs.map(k => (
+                <button 
+                  key={k}
+                  onClick={() => setTab(k)} 
+                  className={`flex-1 min-w-[100px] py-5 text-[10px] font-black uppercase tracking-widest transition-all ${tab === k ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5' : 'text-slate-500'}`}
+                >
+                  {k}
+                </button>
+            ))}
+          </div>
+
+          <div className="p-6">
+            {/* Teams View */}
+            {tab === 'teams' && (
+              <div className="space-y-6">
+                {activeT.creator === user.uid && (!activeT.matches || activeT.matches.length === 0) && (
+                    <div className="bg-slate-900 border border-slate-800 p-6 sm:p-8 rounded-[2.5rem] space-y-5">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Plus className="w-4 h-4 text-emerald-500" />
+                            <h3 className="text-xs font-black uppercase text-slate-400">Enroll Team</h3>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <input 
+                                id="t-name" 
+                                placeholder="Enter team name..." 
+                                disabled={isSaving}
+                                className="flex-1 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-sm focus:border-emerald-500 outline-none" 
+                                onKeyDown={(e) => e.key === 'Enter' && (addTeam(e.target.value), e.target.value = '')} 
+                            />
+                            <button 
+                                disabled={isSaving}
+                                onClick={() => { const i = document.getElementById('t-name'); addTeam(i.value); i.value = ''; }} 
+                                className="bg-emerald-500 text-slate-950 px-8 py-4 sm:py-0 rounded-2xl font-black text-[11px] uppercase active:scale-95 transition-transform"
+                            >
+                                Add Team
+                            </button>
+                        </div>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(activeT.teams || []).map((t) => (
+                    <div key={t.id} className="bg-slate-900/40 border border-slate-800/60 p-5 rounded-3xl flex justify-between items-center group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-[10px] font-black text-emerald-500">
+                                {t.name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <p className="font-bold text-sm sm:text-base">{t.name}</p>
+                        </div>
+                        {activeT.creator === user.uid && (!activeT.matches || activeT.matches.length === 0) && (
+                            <button onClick={() => removeTeam(t.id)} className="p-2 text-slate-600 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                    </div>
+                  ))}
+                  {(!activeT.teams || activeT.teams.length === 0) && (
+                    <div className="col-span-full py-12 text-center text-slate-600 text-xs font-bold uppercase">No teams enrolled yet</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Groups View (Only for Grouped Formats) */}
+            {tab === 'groups' && isGrouped && (
+               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  {Object.entries(
+                    (activeT.teams || []).reduce((acc, team) => {
+                      const g = activeT.groupAssignments?.[team.name] || 'Unassigned';
+                      if (!acc[g]) acc[g] = [];
+                      acc[g].push(team);
+                      return acc;
+                    }, {})
+                  ).sort(([a], [b]) => a - b).map(([groupId, groupTeams]) => (
+                    <div key={groupId} className="bg-slate-900/30 border border-slate-800 p-6 rounded-[2.5rem]">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center">
+                          <Layers className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <h3 className="text-sm font-black uppercase tracking-widest">Group {groupId}</h3>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {groupTeams.map(t => (
+                          <div key={t.id} className="bg-slate-950/50 p-4 rounded-2xl flex items-center gap-3 border border-slate-800/50">
+                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                             <span className="font-bold text-sm">{t.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+               </div>
+            )}
+
+            {/* Matches View */}
+            {tab === 'matches' && (
+              <div className="space-y-6">
+                {activeT.creator === user.uid && (!activeT.matches || activeT.matches.length === 0) && (
+                    <div className="text-center space-y-4">
+                        <button 
+                            disabled={isSaving || (isGrouped && activeT.teams.length < 4)}
+                            onClick={generateStage} 
+                            className="w-full bg-emerald-500 text-slate-950 py-6 rounded-[2.5rem] font-black text-[12px] uppercase shadow-2xl shadow-emerald-500/20 disabled:opacity-50 disabled:grayscale transition-all active:scale-[0.98]"
+                        >
+                            {isSaving ? 'Configuring System...' : 'Initialize Brackets'}
+                        </button>
+                        {isGrouped && activeT.teams.length < 4 && (
+                            <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest">Minimum 4 teams required for groups</p>
+                        )}
+                    </div>
+                )}
+                <div className="grid gap-4">
+                  {(activeT.matches || []).map((m, idx) => (
+                    <div key={m.id} className="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
+                        <div className="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <span>Match {idx + 1}</span>
+                            <span className="text-emerald-500">{m.stage} {m.grp ? `• GROUP ${m.grp}` : ''}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 sm:gap-6">
+                            <div className="flex-1 text-center space-y-3">
+                                <p className="text-xs sm:text-sm font-black truncate">{m.t1}</p>
+                                <input 
+                                    type="number" 
+                                    disabled={activeT.creator !== user.uid}
+                                    value={m.s1 ?? ''}
+                                    onChange={(e) => setScore(idx, e.target.value, undefined)}
+                                    className="w-full bg-slate-950 border border-slate-800 p-3 sm:p-4 rounded-2xl text-center font-black text-xl sm:text-2xl focus:border-emerald-500 outline-none transition-colors"
+                                />
+                            </div>
+                            <div className="text-slate-800 font-black text-[10px] pt-8 sm:pt-10">VS</div>
+                            <div className="flex-1 text-center space-y-3">
+                                <p className="text-xs sm:text-sm font-black truncate">{m.t2}</p>
+                                <input 
+                                    type="number" 
+                                    disabled={activeT.creator !== user.uid}
+                                    value={m.s2 ?? ''}
+                                    onChange={(e) => setScore(idx, undefined, e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 p-3 sm:p-4 rounded-2xl text-center font-black text-xl sm:text-2xl focus:border-emerald-500 outline-none transition-colors"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                  ))}
+                  {(!activeT.matches || activeT.matches.length === 0) && (
+                    <div className="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2.5rem]">
+                        <p className="text-slate-600 text-xs font-black uppercase tracking-widest">Awaiting Kickoff</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Standings View */}
+            {tab === 'standings' && (
+              <div className="space-y-10 animate-in fade-in duration-700">
+                {/* For grouped tournaments, show table per group. For league, show one table. */}
+                {(() => {
+                    const groupIds = isGrouped 
+                        ? Array.from(new Set(Object.values(activeT.groupAssignments || {}))).sort((a,b) => a-b)
+                        : [null];
+
+                    return groupIds.map(gid => (
+                        <div key={gid || 'league'} className="space-y-4">
+                            {gid && <h3 className="text-xs font-black uppercase text-emerald-500 tracking-widest ml-4">Group {gid}</h3>}
+                            <div className="bg-slate-900 border border-slate-800 p-5 sm:p-8 rounded-[2.5rem] shadow-xl overflow-x-auto no-scrollbar">
+                                <table className="w-full text-left min-w-[450px]">
+                                    <thead>
+                                        <tr className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase border-b border-slate-800">
+                                            <th className="pb-4">Team</th>
+                                            <th className="pb-4 text-center">P</th>
+                                            <th className="pb-4 text-center">W</th>
+                                            <th className="pb-4 text-center">D</th>
+                                            <th className="pb-4 text-center">L</th>
+                                            <th className="pb-4 text-center">GD</th>
+                                            <th className="pb-4 text-center">PTS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-xs font-bold">
+                                        {getStats(activeT.teams || [], activeT.matches || [], gid).map(([name, s]) => (
+                                            <tr key={name} className="border-b border-slate-800/30 hover:bg-white/5 transition-colors">
+                                                <td className="py-4 sm:py-5">{name}</td>
+                                                <td className="py-4 sm:py-5 text-center text-slate-500">{s.p}</td>
+                                                <td className="py-4 sm:py-5 text-center text-slate-500">{s.w}</td>
+                                                <td className="py-4 sm:py-5 text-center text-slate-500">{s.d}</td>
+                                                <td className="py-4 sm:py-5 text-center text-slate-500">{s.l}</td>
+                                                <td className="py-4 sm:py-5 text-center text-slate-500">{s.gd}</td>
+                                                <td className="py-4 sm:py-5 text-center text-emerald-400 font-black text-sm">{s.pts}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ));
+                })()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- MODALS --- */}
+      
+      {/* Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[#0a0f18]/90 backdrop-blur-md">
+            <div className="bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 border border-slate-800 text-center shadow-2xl">
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <AlertTriangle className="w-8 h-8 text-red-500" />
+                </div>
+                <h3 className="text-2xl font-black mb-3 tracking-tight italic uppercase">Wipe Protocol?</h3>
+                <p className="text-slate-400 text-xs mb-8 leading-relaxed">Permanently delete all matches, scores and group assignments. Teams will remain enrolled.</p>
+                <div className="flex gap-3">
+                    <button onClick={() => setShowResetModal(false)} className="flex-1 p-5 rounded-2xl border border-slate-800 font-black text-[10px] uppercase">Abort</button>
+                    <button onClick={resetTournament} className="flex-1 bg-red-500 text-white p-5 rounded-2xl font-black text-[10px] uppercase active:scale-95">Wipe Data</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[#0a0f18]/95 backdrop-blur-md overflow-y-auto">
+            <div className="bg-slate-900 w-full max-w-sm rounded-[3rem] p-8 sm:p-10 border border-slate-800 shadow-2xl">
+                <h3 className="text-2xl sm:text-3xl font-black mb-8 tracking-tighter italic uppercase">Forge Arena</h3>
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const newT = {
+                        name: fd.get('name'),
+                        format: fd.get('format'),
+                        password: fd.get('password') || '',
+                        creator: user.uid,
+                        teams: [],
+                        matches: [],
+                        groupAssignments: null,
+                        createdAt: Date.now()
+                    };
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'), newT);
+                    setShowCreateModal(false);
+                }} className="space-y-6">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Arena Designation</label>
+                        <input name="name" required placeholder="Battlefield Alpha..." className="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none focus:border-emerald-500 transition-colors" />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Combat Protocol</label>
+                        <select name="format" className="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none font-bold appearance-none">
+                            <option value="Groups + Knockout">Groups + Knockout</option>
+                            <option value="League Table (1 Leg)">League (1 Leg)</option>
+                            <option value="League Table (2 Legs)">League (2 Legs)</option>
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Access PIN (Optional)</label>
+                        <input name="password" type="password" placeholder="Enter PIN..." className="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none focus:border-amber-500 transition-colors" />
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                        <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 p-4 rounded-2xl font-black text-[10px] uppercase border border-slate-800">Abort</button>
+                        <button type="submit" className="flex-1 bg-emerald-500 text-slate-950 p-4 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-transform">Initialize</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* Password Prompt */}
+      {passPrompt.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[#0a0f18]/95 backdrop-blur-md">
+             <div className="bg-slate-900 w-full max-w-xs rounded-[3rem] p-10 border border-slate-800 text-center">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Lock className="w-8 h-8 text-amber-500" />
+                </div>
+                <h3 className="font-black text-xl mb-6 tracking-tight uppercase italic text-amber-500">Secure Vault</h3>
+                <input 
+                  type="password" 
+                  autoFocus
+                  placeholder="PIN CODE" 
+                  value={passPrompt.input}
+                  onChange={(e) => setPassPrompt({...passPrompt, input: e.target.value})}
+                  className="w-full p-5 rounded-[2rem] bg-slate-950 border border-slate-800 text-center text-xl tracking-[0.3em] mb-8 outline-none focus:border-amber-500 transition-colors" 
+                />
+                <div className="flex gap-3">
+                    <button onClick={() => setPassPrompt({show: false, tid: null, input: ''})} className="flex-1 p-4 rounded-2xl border border-slate-800 font-black text-[10px] uppercase">Cancel</button>
+                    <button onClick={() => {
+                        const t = tournaments.find(x => x.id === passPrompt.tid);
+                        if (t.password === passPrompt.input) {
+                            setActiveT(t);
+                            setView('detail');
+                            setTab('teams');
+                            setPassPrompt({ show: false, tid: null, input: '' });
+                        } else {
+                            alert("Access Denied: Invalid PIN");
+                        }
+                    }} className="flex-1 bg-amber-500 text-slate-950 p-4 rounded-2xl font-black text-[10px] uppercase active:scale-95">Unlock</button>
+                </div>
+             </div>
+        </div>
+      )}
+
+      {/* Create Button (Dashboard Only) */}
+      {view === 'dashboard' && (
+        <button 
+          onClick={() => setShowCreateModal(true)}
+          className="fixed bottom-8 right-8 bg-emerald-500 text-slate-950 p-5 rounded-[2rem] shadow-2xl shadow-emerald-500/40 z-[70] border-4 border-[#0a0f18] active:scale-90 transition-transform"
+        >
+          <Plus className="w-8 h-8" strokeWidth={3} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+```
