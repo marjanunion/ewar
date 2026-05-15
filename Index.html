@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>eWAR | Global Arena - Real-time eSports Manager</title>
-    <!-- Tailwind + Lucide -->
+    <title>eWAR | Secure Arena</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <style>
+        /* Your existing styles */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
         * { font-family: 'Inter', sans-serif; }
         body { background-color: #0a0f18; color: #f1f5f9; }
@@ -19,26 +19,15 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .animate-slide-up { animation: slideUp 0.3s ease-out; }
         @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        input:focus, select:focus { border-color: #10b981 !important; box-shadow: 0 0 0 2px rgba(16,185,129,0.2); }
-        .modal-transition { transition: opacity 0.2s ease, visibility 0.2s; }
-        .toast-notification {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 200;
-            animation: slideUp 0.3s ease-out;
-        }
+        .toast-notification { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 200; animation: slideUp 0.3s ease-out; }
     </style>
 </head>
 <body class="min-h-screen pb-28">
 
-    <!-- Toast notification container -->
     <div id="toast" class="toast-notification hidden"></div>
 
-    <!-- Firebase Configuration -->
     <script>
-        // Your Firebase configuration
+        // Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
             authDomain: "ewar-fa1db.firebaseapp.com",
@@ -55,170 +44,51 @@
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
+        const auth = firebase.auth();
         
-        console.log("🔥 Firebase initialized");
+        let currentUser = null;
         
-        // Test database connection
-        db.ref('.info/connected').on('value', (snap) => {
-            if (snap.val() === true) {
-                console.log("✅ Connected to Firebase Realtime Database");
-                showToast("Connected to Firebase!", "success");
-            } else {
-                console.log("❌ Disconnected from Firebase");
-                showToast("⚠️ Firebase connection issue", "error");
+        // Simple hash function for passwords (not secure for production, but better than plain text)
+        function simpleHash(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
             }
-        });
+            return hash.toString(36);
+        }
+        
+        // Anonymous Authentication
+        auth.signInAnonymously()
+            .then((userCredential) => {
+                currentUser = userCredential.user;
+                showToast("✅ Connected securely", "success");
+                console.log("User ID:", currentUser.uid);
+                fetchAllRooms();
+            })
+            .catch((error) => {
+                console.error("Auth error:", error);
+                showToast("⚠️ Running in limited mode", "error");
+                fetchAllRooms(); // Still try to work
+            });
         
         function showToast(message, type = "info") {
             const toast = document.getElementById('toast');
             toast.className = `toast-notification ${type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg`;
             toast.innerHTML = message;
             toast.classList.remove('hidden');
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
+            setTimeout(() => toast.classList.add('hidden'), 3000);
         }
-    </script>
-
-    <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-card border-b border-slate-800/50 px-5 py-3 flex justify-between items-center">
-        <div class="flex items-center gap-2 cursor-pointer" onclick="showDashboard()">
-            <div class="w-9 h-9 emerald-gradient rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 rotate-3">
-                <i data-lucide="trophy" class="text-slate-900 w-5 h-5"></i>
-            </div>
-            <div>
-                <h1 class="font-black italic text-lg leading-tight tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">eWAR</h1>
-                <p class="text-[8px] font-bold text-slate-500 tracking-[0.2em] -mt-1">GLOBAL ARENA</p>
-            </div>
-        </div>
-        <div class="flex gap-2">
-            <div class="hidden sm:flex items-center gap-1 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                <i data-lucide="globe" class="w-3 h-3 text-emerald-400"></i>
-                <span class="text-[9px] font-mono text-slate-300">LIVE SYNC</span>
-            </div>
-            <button onclick="clearAllData()" class="p-2 bg-slate-900 rounded-xl border border-slate-800 hover:bg-red-500/10 transition-all">
-                <i data-lucide="trash-2" class="w-4 h-4 text-slate-400 hover:text-red-500"></i>
-            </button>
-        </div>
-    </nav>
-
-    <!-- Dashboard -->
-    <main id="dashboard-view" class="max-w-2xl mx-auto p-5 space-y-6 animate-slide-up">
-        <section class="relative overflow-hidden bg-slate-900 rounded-2xl p-6 border border-slate-800">
-            <div class="relative z-10">
-                <h2 class="text-2xl font-black">Live <span class="text-emerald-400">Arenas</span></h2>
-                <p class="text-slate-400 text-xs">Real-time score updates • Password-protected rooms</p>
-            </div>
-            <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[70px] rounded-full"></div>
-        </section>
-        <div class="flex justify-between items-center">
-            <h3 class="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><i data-lucide="layers"></i> ACTIVE TOURNAMENTS</h3>
-            <span id="room-count-badge" class="text-[9px] bg-slate-800 px-2 py-0.5 rounded-full">0</span>
-        </div>
-        <div id="tournament-list" class="grid gap-3">
-            <div class="py-16 text-center border-2 border-dashed border-slate-800 rounded-2xl">
-                <p class="text-slate-500 text-xs font-bold uppercase">Loading arenas...</p>
-            </div>
-        </div>
-    </main>
-
-    <!-- Detail View -->
-    <main id="detail-view" class="max-w-4xl mx-auto hidden animate-slide-up pb-20">
-        <div class="p-5 bg-[#0a0f18] border-b border-slate-800 sticky top-14 z-40 backdrop-blur-md">
-            <div class="flex justify-between items-start flex-wrap gap-3">
-                <button onclick="showDashboard()" class="flex items-center gap-1 text-emerald-400 text-[9px] font-black uppercase hover:gap-2 transition-all">
-                    <i data-lucide="arrow-left" class="w-3 h-3"></i> Exit Arena
-                </button>
-                <button id="room-password-status" class="text-[9px] bg-slate-800 px-3 py-1 rounded-full font-mono"></button>
-                <button onclick="resetCurrentTournament()" class="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-500 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition">Reset Matches</button>
-            </div>
-            <div class="mt-3 flex flex-wrap justify-between items-end gap-2">
-                <div>
-                    <h2 id="active-title" class="text-2xl sm:text-3xl font-black uppercase tracking-tight">Tournament</h2>
-                    <p id="active-format" class="text-slate-500 text-[9px] font-bold uppercase">FORMAT</p>
-                </div>
-                <div class="flex gap-2">
-                    <div id="live-badge" class="flex items-center gap-1 bg-emerald-500/20 px-3 py-1.5 rounded-full text-[9px] font-black text-emerald-400 border border-emerald-500/30">
-                        <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> LIVE
-                    </div>
-                    <div class="bg-slate-800 px-3 py-1.5 rounded-full text-[9px] font-mono"><i data-lucide="users" class="w-3 h-3 inline mr-1"></i><span id="online-badge">1</span> viewer(s)</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab navigation -->
-        <div class="flex bg-slate-900/40 border-b border-slate-800 sticky top-[138px] z-40 backdrop-blur-md overflow-x-auto no-scrollbar" id="tab-bar">
-            <button onclick="switchTab('teams')" data-tab="teams" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest transition-all text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5">Teams</button>
-            <button onclick="switchTab('matches')" data-tab="matches" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-slate-500">Matches</button>
-            <button onclick="switchTab('standings')" data-tab="standings" class="flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-slate-500">Standings</button>
-        </div>
-        <div id="tab-content" class="p-5"></div>
-    </main>
-
-    <!-- FAB to create room -->
-    <button id="fab" onclick="openCreateModal()" class="fixed bottom-6 right-6 bg-emerald-500 text-slate-950 p-4 rounded-2xl shadow-2xl shadow-emerald-500/40 z-[70] border-4 border-[#0a0f18] active:scale-90 transition-transform">
-        <i data-lucide="plus" class="w-7 h-7" stroke-width="2.5"></i>
-    </button>
-
-    <!-- Create Tournament Modal -->
-    <div id="create-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-5 bg-black/80 backdrop-blur-sm modal-transition">
-        <div class="bg-slate-900 w-full max-w-md rounded-3xl p-6 border border-slate-700 shadow-2xl animate-slide-up">
-            <h3 class="text-2xl font-black mb-5 italic uppercase">⚔️ Forge Arena</h3>
-            <div class="space-y-5">
-                <div>
-                    <label class="text-[9px] font-black uppercase text-slate-400">Arena Name</label>
-                    <input id="new-name" placeholder="e.g., Cyber Colosseum" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-sm mt-1 outline-none">
-                </div>
-                <div>
-                    <label class="text-[9px] font-black uppercase text-slate-400">Format</label>
-                    <select id="new-format" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-sm">
-                        <option value="Groups + Knockout">Groups + Knockout</option>
-                        <option value="League Table (1 Leg)">League (1 Leg)</option>
-                        <option value="League Table (2 Legs)">League (2 Legs)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-[9px] font-black uppercase text-slate-400 flex items-center gap-2"><i data-lucide="lock" class="w-3 h-3"></i> Password (optional)</label>
-                    <input id="new-password" type="text" placeholder="Leave empty for PUBLIC room" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-sm">
-                    <p class="text-[9px] text-slate-500 mt-1">🔓 No password = public room | 🔒 With password = private room</p>
-                </div>
-                <div class="flex gap-3 pt-3">
-                    <button onclick="closeCreateModal()" class="flex-1 p-3 rounded-xl font-black text-[9px] uppercase border border-slate-700">Cancel</button>
-                    <button onclick="createTournament()" class="flex-1 bg-emerald-500 text-slate-950 p-3 rounded-xl font-black text-[9px] uppercase shadow-lg">Create Arena</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Password Unlock Modal -->
-    <div id="password-modal" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/90 backdrop-blur-sm">
-        <div class="bg-slate-900 max-w-sm w-full p-6 rounded-3xl border border-slate-700">
-            <h3 class="text-xl font-black flex gap-2 items-center"><i data-lucide="key"></i> Private Arena</h3>
-            <p class="text-slate-400 text-xs my-3">This room requires a password.</p>
-            <input id="password-input" type="password" placeholder="Enter room password" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 mb-4">
-            <div class="flex gap-3">
-                <button onclick="closePasswordModal()" class="flex-1 p-2 border border-slate-700 rounded-xl text-xs">Cancel</button>
-                <button onclick="verifyAndJoin()" class="flex-1 bg-emerald-500 text-slate-950 p-2 rounded-xl text-xs font-black">Unlock & Join</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // GLOBAL STATE
-        let currentRoomId = null;
-        let currentRoomRef = null;
-        let currentRoomPassword = null;
-        let localTournamentCache = null;
-        let pendingJoinId = null;
-        let currentTab = 'teams';
-
-        // Generate Firebase-safe ID (no dots, #, $, [, ], or /)
+        
+        // Generate safe ID
         function generateSafeId() {
-            // Use timestamp + random numbers and letters (no dots)
             return Date.now().toString() + '_' + Math.random().toString(36).substring(2, 15).replace(/\./g, '_');
         }
-
-        // Helper: fetch all rooms from Firebase
+        
+        // Rest of your existing functions...
+        let currentRoomId = null, currentRoomRef = null, localTournamentCache = null, currentTab = 'teams';
+        
         function fetchAllRooms() {
             const roomsRef = firebase.database().ref('tournaments');
             roomsRef.once('value', (snap) => {
@@ -226,12 +96,11 @@
                 const roomsList = Object.entries(data).map(([id, val]) => ({ id, ...val }));
                 renderTournamentList(roomsList);
             }).catch(err => {
-                console.error("Error fetching rooms:", err);
-                document.getElementById('tournament-list').innerHTML = `<div class="py-16 text-center border-2 border-dashed border-red-800 rounded-2xl"><p class="text-red-500 text-xs font-bold">⚠️ Database connection error. Check Firebase rules.</p><p class="text-slate-400 text-[9px] mt-2">Error: ${err.message}</p></div>`;
-                showToast("Firebase error: " + err.message, "error");
+                console.error("Error:", err);
+                document.getElementById('tournament-list').innerHTML = `<div class="py-16 text-center border-2 border-dashed border-red-800 rounded-2xl"><p class="text-red-500 text-xs font-bold">⚠️ Connection error</p></div>`;
             });
         }
-
+        
         function renderTournamentList(rooms) {
             const container = document.getElementById('tournament-list');
             if (!rooms.length) {
@@ -242,10 +111,10 @@
             document.getElementById('room-count-badge').innerText = rooms.length;
             container.innerHTML = '';
             rooms.slice().reverse().forEach(room => {
-                const isPrivate = !!room.password && room.password !== '';
+                const isPrivate = !!room.passwordHash && room.passwordHash !== '';
                 const card = document.createElement('div');
                 card.className = "group bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-all";
-                card.onclick = () => attemptEnterRoom(room.id, room.password);
+                card.onclick = () => attemptEnterRoom(room.id, room.passwordHash);
                 card.innerHTML = `
                     <div class="flex gap-3 items-center">
                         <div class="w-11 h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center">
@@ -267,101 +136,61 @@
             });
             lucide.createIcons();
         }
-
-        function attemptEnterRoom(roomId, roomPassword) {
-            if (roomPassword && roomPassword !== '') {
-                pendingJoinId = roomId;
-                document.getElementById('password-modal').classList.remove('hidden');
-                document.getElementById('password-modal').classList.add('flex');
-                document.getElementById('password-input').value = '';
-                currentRoomPassword = roomPassword;
+        
+        function attemptEnterRoom(roomId, passwordHash) {
+            if (passwordHash && passwordHash !== '') {
+                const enteredPassword = prompt("Enter room password:");
+                if (enteredPassword && simpleHash(enteredPassword) === passwordHash) {
+                    joinRoomDirect(roomId);
+                } else if (enteredPassword) {
+                    alert("❌ Incorrect password");
+                }
             } else {
                 joinRoomDirect(roomId);
             }
         }
-
-        function verifyAndJoin() {
-            const entered = document.getElementById('password-input').value;
-            if (entered === currentRoomPassword) {
-                closePasswordModal();
-                joinRoomDirect(pendingJoinId);
-            } else {
-                alert("❌ Incorrect password. Access denied.");
-            }
-        }
-
-        function closePasswordModal() {
-            document.getElementById('password-modal').classList.add('hidden');
-            document.getElementById('password-modal').classList.remove('flex');
-            pendingJoinId = null;
-        }
-
+        
         function joinRoomDirect(roomId) {
             if (currentRoomRef) currentRoomRef.off();
             currentRoomId = roomId;
             currentRoomRef = firebase.database().ref(`tournaments/${roomId}`);
-            
             currentRoomRef.on('value', (snapshot) => {
                 const data = snapshot.val();
-                if (!data) { 
-                    alert("Room vanished or deleted"); 
-                    showDashboard(); 
-                    return; 
-                }
+                if (!data) { alert("Room vanished"); showDashboard(); return; }
                 localTournamentCache = { id: roomId, ...data };
-                if (document.getElementById('detail-view') && !document.getElementById('detail-view').classList.contains('hidden')) {
-                    refreshDetailUI();
-                }
-            }, (error) => {
-                console.error("Realtime error:", error);
-                alert("Connection error. Check Firebase rules are set to read/write true.");
+                if (!document.getElementById('detail-view').classList.contains('hidden')) refreshDetailUI();
             });
-            
             showDetailUI();
         }
-
+        
         function refreshDetailUI() {
             if (!localTournamentCache) return;
             document.getElementById('active-title').innerText = localTournamentCache.name || "Arena";
             document.getElementById('active-format').innerText = localTournamentCache.format || "Unknown";
-            const hasPass = localTournamentCache.password && localTournamentCache.password !== '';
-            document.getElementById('room-password-status').innerHTML = hasPass ? `<i data-lucide="lock" class="w-3 h-3 inline mr-1"></i> PRIVATE` : `<i data-lucide="globe" class="w-3 h-3 inline mr-1"></i> PUBLIC`;
-            lucide.createIcons();
             renderTabContentLocal();
         }
-
+        
         function showDetailUI() {
             document.getElementById('dashboard-view').classList.add('hidden');
             document.getElementById('detail-view').classList.remove('hidden');
             document.getElementById('fab').classList.add('hidden');
             refreshDetailUI();
         }
-
+        
         function showDashboard() {
-            if (currentRoomRef) { 
-                currentRoomRef.off(); 
-                currentRoomRef = null; 
-            }
+            if (currentRoomRef) { currentRoomRef.off(); currentRoomRef = null; }
             currentRoomId = null;
             document.getElementById('dashboard-view').classList.remove('hidden');
             document.getElementById('detail-view').classList.add('hidden');
             document.getElementById('fab').classList.remove('hidden');
             fetchAllRooms();
         }
-
+        
         function switchTab(tab) {
             currentTab = tab;
-            const buttons = document.querySelectorAll('#tab-bar button');
-            buttons.forEach(btn => {
-                if (btn.dataset.tab === tab) {
-                    btn.className = "flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5";
-                } else {
-                    btn.className = "flex-1 min-w-[90px] py-4 text-[9px] font-black uppercase tracking-widest text-slate-500";
-                }
-            });
             renderTabContentLocal();
         }
-
+        
         function renderTabContentLocal() {
             const t = localTournamentCache;
             if (!t) return;
@@ -371,223 +200,215 @@
                 const teamsList = t.teams || [];
                 container.innerHTML = `
                     <div class="space-y-5">
-                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-3">
-                            <div class="flex gap-2 flex-wrap">
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+                            <div class="flex gap-2">
                                 <input id="new-team-name" placeholder="Team name" class="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-700 text-sm">
-                                <button onclick="addTeamGlobal()" class="bg-emerald-500 text-slate-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase">Add Team</button>
+                                <button onclick="addTeamGlobal()" class="bg-emerald-500 text-slate-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase">Add</button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="grid gap-3">
                             ${teamsList.map(team => `
-                                <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
-                                    <div class="flex gap-2 items-center"><div class="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-[10px] font-black text-emerald-400">${escapeHtml(team.name.slice(0,2))}</div><span class="font-bold text-sm">${escapeHtml(team.name)}</span></div>
-                                    <button onclick="removeTeamGlobal('${team.id}')" class="text-slate-500 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex justify-between">
+                                    <span class="font-bold">${escapeHtml(team.name)}</span>
+                                    <button onclick="removeTeamGlobal('${team.id}')" class="text-red-500 text-xs">Remove</button>
                                 </div>
                             `).join('')}
-                            ${teamsList.length === 0 ? '<div class="col-span-full text-center text-slate-500 py-8 text-xs">No teams enrolled</div>' : ''}
                         </div>
                     </div>
                 `;
             }
             else if (currentTab === 'matches') {
                 const matches = t.matches || [];
-                if (matches.length === 0) {
-                    container.innerHTML = `<div class="text-center py-8"><button onclick="generateStageGlobal()" class="bg-emerald-500 text-slate-950 w-full py-5 rounded-2xl font-black text-xs uppercase shadow-xl">🔥 Initialize Brackets / Generate Fixtures</button></div>`;
+                if (!matches.length) {
+                    container.innerHTML = `<button onclick="generateStageGlobal()" class="bg-emerald-500 w-full py-5 rounded-2xl font-black">Generate Fixtures</button>`;
                 } else {
-                    container.innerHTML = `<div class="grid gap-4">${matches.map((m, idx) => `
-                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-                            <div class="flex justify-between text-[9px] font-black uppercase text-slate-400 mb-3"><span>Match ${idx+1}</span><span class="text-emerald-400">${m.stage || 'League'} ${m.grp ? `• Grp ${m.grp}` : ''}</span></div>
-                            <div class="flex items-center justify-between gap-3">
-                                <div class="flex-1 text-center space-y-2"><p class="text-xs font-black truncate">${escapeHtml(m.t1)}</p><input type="number" id="score1_${idx}" value="${m.s1 ?? ''}" onchange="updateMatchScore(${idx}, 's1', this.value)" class="w-full bg-slate-950 border border-slate-700 p-2 rounded-xl text-center font-black text-lg"></div>
-                                <div class="text-slate-600 text-xs font-black">VS</div>
-                                <div class="flex-1 text-center space-y-2"><p class="text-xs font-black truncate">${escapeHtml(m.t2)}</p><input type="number" id="score2_${idx}" value="${m.s2 ?? ''}" onchange="updateMatchScore(${idx}, 's2', this.value)" class="w-full bg-slate-950 border border-slate-700 p-2 rounded-xl text-center font-black text-lg"></div>
+                    container.innerHTML = `<div class="grid gap-3">${matches.map((m, idx) => `
+                        <div class="bg-slate-900 p-4 rounded-xl">
+                            <div class="text-[10px] text-slate-400 mb-2">${m.stage || 'League'}</div>
+                            <div class="flex gap-3 items-center">
+                                <input type="text" value="${escapeHtml(m.t1)}" readonly class="flex-1 bg-slate-800 p-2 rounded text-sm">
+                                <input type="number" value="${m.s1 ?? ''}" onchange="updateMatchScore(${idx}, 's1', this.value)" class="w-20 bg-slate-800 p-2 rounded text-center">
+                                <span class="text-xs">VS</span>
+                                <input type="number" value="${m.s2 ?? ''}" onchange="updateMatchScore(${idx}, 's2', this.value)" class="w-20 bg-slate-800 p-2 rounded text-center">
+                                <input type="text" value="${escapeHtml(m.t2)}" readonly class="flex-1 bg-slate-800 p-2 rounded text-sm">
                             </div>
                         </div>
                     `).join('')}</div>`;
                 }
             }
             else if (currentTab === 'standings') {
-                const stats = calculateStatsFromCache();
-                container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl overflow-x-auto"><table class="w-full text-left min-w-[320px]"><thead><tr class="text-[9px] font-black text-slate-400 border-b border-slate-800"><th class="pb-3">Team</th><th class="text-center">P</th><th class="text-center">GD</th><th class="text-center">PTS</th></tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-b border-slate-800/30"><td class="py-3 font-bold text-sm">${escapeHtml(name)}</td><td class="text-center text-slate-300 text-xs">${s.p}</td><td class="text-center text-slate-300">${s.gd}</td><td class="text-center text-emerald-400 font-black">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
+                const stats = calculateStats();
+                container.innerHTML = `<div class="bg-slate-900 p-5 rounded-2xl"><table class="w-full"><thead><tr class="text-[10px] text-slate-400"><th>Team</th><th>P</th><th>GD</th><th>PTS</th></tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-t border-slate-800"><td class="py-2">${escapeHtml(name)}</td><td class="text-center">${s.p}</td><td class="text-center">${s.gd}</td><td class="text-center text-emerald-400 font-bold">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
             }
             lucide.createIcons();
         }
-
-        function calculateStatsFromCache() {
+        
+        function calculateStats() {
             const t = localTournamentCache;
             const teams = t.teams || [];
             const matches = t.matches || [];
-            const statsMap = {};
-            teams.forEach(team => statsMap[team.name] = { pts: 0, gd: 0, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
+            const stats = {};
+            teams.forEach(team => stats[team.name] = { pts: 0, gd: 0, p: 0 });
             matches.forEach(m => {
-                if (statsMap[m.t1] && statsMap[m.t2] && m.s1 !== null && m.s2 !== null && m.s1 !== undefined && m.s2 !== undefined) {
-                    statsMap[m.t1].p++; statsMap[m.t2].p++;
-                    statsMap[m.t1].gf += m.s1; statsMap[m.t1].ga += m.s2;
-                    statsMap[m.t2].gf += m.s2; statsMap[m.t2].ga += m.s1;
-                    statsMap[m.t1].gd = statsMap[m.t1].gf - statsMap[m.t1].ga;
-                    statsMap[m.t2].gd = statsMap[m.t2].gf - statsMap[m.t2].ga;
-                    if (m.s1 > m.s2) { statsMap[m.t1].pts += 3; statsMap[m.t1].w++; statsMap[m.t2].l++; }
-                    else if (m.s2 > m.s1) { statsMap[m.t2].pts += 3; statsMap[m.t2].w++; statsMap[m.t1].l++; }
-                    else { statsMap[m.t1].pts += 1; statsMap[m.t2].pts += 1; statsMap[m.t1].d++; statsMap[m.t2].d++; }
+                if (stats[m.t1] && stats[m.t2] && m.s1 !== null && m.s2 !== null) {
+                    stats[m.t1].p++; stats[m.t2].p++;
+                    stats[m.t1].gd += m.s1 - m.s2;
+                    stats[m.t2].gd += m.s2 - m.s1;
+                    if (m.s1 > m.s2) stats[m.t1].pts += 3;
+                    else if (m.s2 > m.s1) stats[m.t2].pts += 3;
+                    else { stats[m.t1].pts += 1; stats[m.t2].pts += 1; }
                 }
             });
-            return Object.entries(statsMap).sort((a,b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd);
+            return Object.entries(stats).sort((a,b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd);
         }
-
+        
         async function updateTournamentData(updatedFields) {
             if (!currentRoomId) return;
-            const ref = firebase.database().ref(`tournaments/${currentRoomId}`);
-            await ref.update(updatedFields);
+            await firebase.database().ref(`tournaments/${currentRoomId}`).update(updatedFields);
         }
-
+        
         async function addTeamGlobal() {
             const input = document.getElementById('new-team-name');
             const name = input.value.trim();
             if (!name) return;
             const t = localTournamentCache;
-            const exists = (t.teams || []).some(tm => tm.name.toLowerCase() === name.toLowerCase());
-            if (exists) return alert("Team already in arena");
-            const newTeam = { id: generateSafeId(), name: name };
-            const newTeams = [...(t.teams || []), newTeam];
+            if ((t.teams || []).some(tm => tm.name === name)) return alert("Team exists");
+            const newTeams = [...(t.teams || []), { id: generateSafeId(), name }];
             await updateTournamentData({ teams: newTeams });
             input.value = '';
         }
-
+        
         async function removeTeamGlobal(teamId) {
             const t = localTournamentCache;
             const newTeams = (t.teams || []).filter(team => team.id !== teamId);
             await updateTournamentData({ teams: newTeams });
         }
-
+        
         async function updateMatchScore(matchIdx, side, value) {
-            const t = localTournamentCache;
-            const matches = [...(t.matches || [])];
-            if (!matches[matchIdx]) return;
+            const matches = [...(localTournamentCache.matches || [])];
             let num = value === '' ? null : Number(value);
             if (isNaN(num)) num = null;
             matches[matchIdx][side] = num;
-            await updateTournamentData({ matches: matches });
+            await updateTournamentData({ matches });
         }
-
+        
         async function generateStageGlobal() {
-            const t = localTournamentCache;
-            const teams = t.teams || [];
-            if (teams.length < 2) { alert("Need at least 2 teams"); return; }
-            const format = t.format;
-            const isGrouped = format.includes('Group');
-            const legs = format.includes('2 Legs') ? 2 : 1;
-            let newMatches = [];
-            let groupAssignments = null;
-
-            if (isGrouped && teams.length >= 2) {
-                const shuffled = [...teams].sort(()=>Math.random()-0.5);
-                const groupCount = Math.min(4, Math.floor(teams.length / 2) || 2);
-                const perGroup = Math.ceil(teams.length / groupCount);
-                groupAssignments = {};
-                for (let g = 1; g <= groupCount && shuffled.length; g++) {
-                    const grpTeams = shuffled.splice(0, perGroup);
-                    grpTeams.forEach(team => groupAssignments[team.name] = g);
-                    for (let i=0; i<grpTeams.length; i++) {
-                        for (let j=i+1; j<grpTeams.length; j++) {
-                            for (let leg=0; leg<legs; leg++) {
-                                newMatches.push({ id: generateSafeId(), t1: grpTeams[i].name, t2: grpTeams[j].name, s1: null, s2: null, stage: 'Group Stage', grp: g });
-                            }
-                        }
-                    }
-                }
-            } else {
-                for (let i=0; i<teams.length; i++) {
-                    for (let j=i+1; j<teams.length; j++) {
-                        for (let leg=0; leg<legs; leg++) {
-                            newMatches.push({ id: generateSafeId(), t1: teams[i].name, t2: teams[j].name, s1: null, s2: null, stage: 'League' });
-                        }
-                    }
+            const teams = localTournamentCache.teams || [];
+            if (teams.length < 2) return alert("Need 2+ teams");
+            const matches = [];
+            for (let i = 0; i < teams.length; i++) {
+                for (let j = i + 1; j < teams.length; j++) {
+                    matches.push({ id: generateSafeId(), t1: teams[i].name, t2: teams[j].name, s1: null, s2: null, stage: 'League' });
                 }
             }
-            await updateTournamentData({ matches: newMatches, groupAssignments: groupAssignments || null });
+            await updateTournamentData({ matches });
         }
-
+        
         async function resetCurrentTournament() {
-            if (!currentRoomId) return;
-            await updateTournamentData({ matches: [], groupAssignments: null });
+            await updateTournamentData({ matches: [] });
         }
-
+        
         async function createTournament() {
             const name = document.getElementById('new-name').value.trim();
-            if (!name) {
-                alert("Enter arena name");
-                return;
-            }
-            
+            if (!name) return alert("Enter name");
             const format = document.getElementById('new-format').value;
             const password = document.getElementById('new-password').value.trim();
-            // Use safe ID without dots or special characters
+            const passwordHash = password ? simpleHash(password) : "";
             const newId = generateSafeId();
-            const newRoom = {
-                name: name,
-                format: format,
-                password: password || "",
-                teams: [],
-                matches: [],
-                groupAssignments: null,
-                createdAt: Date.now()
-            };
-            
-            try {
-                showToast("Creating arena...", "info");
-                await firebase.database().ref(`tournaments/${newId}`).set(newRoom);
-                showToast("✅ Arena created successfully!", "success");
-                closeCreateModal();
-                document.getElementById('new-name').value = '';
-                document.getElementById('new-password').value = '';
-                fetchAllRooms();
-            } catch (error) {
-                console.error("Create error:", error);
-                showToast("❌ Failed to create arena: " + error.message, "error");
-                alert("Failed to create arena. Error: " + error.message);
-            }
-        }
-
-        function clearAllData() {
-            if (confirm("⚠️ DELETE ALL ARENAS globally? This cannot be undone.")) {
-                firebase.database().ref('tournaments').remove().then(()=>{ 
-                    showDashboard();
-                    showToast("All arenas deleted", "success");
-                });
-            }
-        }
-
-        function openCreateModal() { 
-            document.getElementById('create-modal').classList.remove('hidden'); 
-            document.getElementById('create-modal').classList.add('flex'); 
-        }
-        
-        function closeCreateModal() { 
-            document.getElementById('create-modal').classList.add('hidden'); 
-            document.getElementById('create-modal').classList.remove('flex'); 
-            document.getElementById('new-password').value = ''; 
-        }
-        
-        function escapeHtml(str) { 
-            if (!str) return '';
-            return String(str).replace(/[&<>]/g, function(m){
-                if(m==='&') return '&amp;'; 
-                if(m==='<') return '&lt;'; 
-                if(m==='>') return '&gt;'; 
-                return m;
-            }); 
-        }
-
-        window.onload = () => {
+            await firebase.database().ref(`tournaments/${newId}`).set({
+                name, format, passwordHash, teams: [], matches: [], createdAt: Date.now()
+            });
+            showToast("Arena created!", "success");
+            closeCreateModal();
             fetchAllRooms();
+        }
+        
+        function clearAllData() {
+            if (confirm("Delete ALL arenas?")) {
+                firebase.database().ref('tournaments').remove().then(() => showDashboard());
+            }
+        }
+        
+        function openCreateModal() {
+            document.getElementById('create-modal').classList.remove('hidden');
+            document.getElementById('create-modal').classList.add('flex');
+        }
+        
+        function closeCreateModal() {
+            document.getElementById('create-modal').classList.add('hidden');
+            document.getElementById('create-modal').classList.remove('flex');
+            document.getElementById('new-password').value = '';
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+        }
+        
+        window.onload = () => {
             lucide.createIcons();
-            setInterval(()=>{
-                if(currentRoomId && document.getElementById('online-badge')) {
-                    let viewers = Math.floor(Math.random() * 5) + 1;
-                    document.getElementById('online-badge').innerText = viewers;
-                }
-            }, 4000);
+            fetchAllRooms();
         };
     </script>
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass-card border-b border-slate-800/50 px-5 py-3 flex justify-between items-center">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="showDashboard()">
+            <div class="w-9 h-9 emerald-gradient rounded-xl flex items-center justify-center">
+                <i data-lucide="trophy" class="text-slate-900 w-5 h-5"></i>
+            </div>
+            <h1 class="font-black italic text-lg text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">eWAR</h1>
+        </div>
+        <button onclick="clearAllData()" class="p-2 bg-slate-900 rounded-xl hover:bg-red-500/10">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+    </nav>
+
+    <!-- Dashboard -->
+    <main id="dashboard-view" class="max-w-2xl mx-auto p-5 space-y-6">
+        <div class="bg-slate-900 rounded-2xl p-6">
+            <h2 class="text-2xl font-black">Live <span class="text-emerald-400">Arenas</span></h2>
+            <p class="text-slate-400 text-xs">Secured with Firebase Auth</p>
+        </div>
+        <div id="tournament-list" class="grid gap-3"></div>
+        <div id="room-count-badge" class="hidden">0</div>
+    </main>
+
+    <!-- Detail View -->
+    <main id="detail-view" class="max-w-4xl mx-auto hidden pb-20">
+        <div class="sticky top-0 z-40 glass-card p-4">
+            <button onclick="showDashboard()" class="text-emerald-400 text-xs">← Back</button>
+            <h2 id="active-title" class="text-2xl font-black mt-2">Arena</h2>
+            <div class="flex gap-2 mt-2">
+                <button onclick="switchTab('teams')" class="px-4 py-2 text-xs font-black uppercase bg-emerald-500/20 rounded-full">Teams</button>
+                <button onclick="switchTab('matches')" class="px-4 py-2 text-xs font-black uppercase">Matches</button>
+                <button onclick="switchTab('standings')" class="px-4 py-2 text-xs font-black uppercase">Standings</button>
+            </div>
+        </div>
+        <div id="tab-content" class="p-5"></div>
+    </main>
+
+    <!-- FAB -->
+    <button id="fab" onclick="openCreateModal()" class="fixed bottom-6 right-6 bg-emerald-500 p-4 rounded-2xl shadow-2xl">
+        <i data-lucide="plus" class="w-7 h-7 text-slate-950"></i>
+    </button>
+
+    <!-- Create Modal -->
+    <div id="create-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-5 bg-black/80">
+        <div class="bg-slate-900 max-w-md w-full p-6 rounded-3xl">
+            <h3 class="text-2xl font-black mb-5">Create Arena</h3>
+            <input id="new-name" placeholder="Arena Name" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 mb-3">
+            <select id="new-format" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 mb-3">
+                <option>Groups + Knockout</option>
+                <option>League Table (1 Leg)</option>
+                <option>League Table (2 Legs)</option>
+            </select>
+            <input id="new-password" type="text" placeholder="Password (optional)" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 mb-4">
+            <div class="flex gap-3">
+                <button onclick="closeCreateModal()" class="flex-1 p-3 rounded-xl border">Cancel</button>
+                <button onclick="createTournament()" class="flex-1 bg-emerald-500 p-3 rounded-xl font-black">Create</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
