@@ -21,11 +21,22 @@
         @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         input:focus, select:focus { border-color: #10b981 !important; box-shadow: 0 0 0 2px rgba(16,185,129,0.2); }
         .modal-transition { transition: opacity 0.2s ease, visibility 0.2s; }
+        .toast-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+            animation: slideUp 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="min-h-screen pb-28">
 
-    <!-- Firebase Configuration - YOUR ACTUAL CONFIG -->
+    <!-- Toast notification container -->
+    <div id="toast" class="toast-notification hidden"></div>
+
+    <!-- Firebase Configuration -->
     <script>
         // Your Firebase configuration
         const firebaseConfig = {
@@ -36,7 +47,7 @@
             messagingSenderId: "287555570705",
             appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
             measurementId: "G-3P3RYNZXL0",
-            databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com"  // Realtime Database URL
+            databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com"
         };
         
         // Initialize Firebase
@@ -45,8 +56,28 @@
         }
         const db = firebase.database();
         
+        console.log("🔥 Firebase initialized");
+        
         // Test database connection
-        console.log("🔥 Firebase initialized with project:", firebaseConfig.projectId);
+        db.ref('.info/connected').on('value', (snap) => {
+            if (snap.val() === true) {
+                console.log("✅ Connected to Firebase Realtime Database");
+                showToast("Connected to Firebase!", "success");
+            } else {
+                console.log("❌ Disconnected from Firebase");
+                showToast("⚠️ Firebase connection issue", "error");
+            }
+        });
+        
+        function showToast(message, type = "info") {
+            const toast = document.getElementById('toast');
+            toast.className = `toast-notification ${type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg`;
+            toast.innerHTML = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
     </script>
 
     <!-- Navigation -->
@@ -71,7 +102,7 @@
         </div>
     </nav>
 
-    <!-- Dashboard: list of public/private rooms -->
+    <!-- Dashboard -->
     <main id="dashboard-view" class="max-w-2xl mx-auto p-5 space-y-6 animate-slide-up">
         <section class="relative overflow-hidden bg-slate-900 rounded-2xl p-6 border border-slate-800">
             <div class="relative z-10">
@@ -91,7 +122,7 @@
         </div>
     </main>
 
-    <!-- Detail View (Room inside) -->
+    <!-- Detail View -->
     <main id="detail-view" class="max-w-4xl mx-auto hidden animate-slide-up pb-20">
         <div class="p-5 bg-[#0a0f18] border-b border-slate-800 sticky top-14 z-40 backdrop-blur-md">
             <div class="flex justify-between items-start flex-wrap gap-3">
@@ -129,7 +160,7 @@
         <i data-lucide="plus" class="w-7 h-7" stroke-width="2.5"></i>
     </button>
 
-    <!-- Create Tournament Modal (with password option) -->
+    <!-- Create Tournament Modal -->
     <div id="create-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-5 bg-black/80 backdrop-blur-sm modal-transition">
         <div class="bg-slate-900 w-full max-w-md rounded-3xl p-6 border border-slate-700 shadow-2xl animate-slide-up">
             <h3 class="text-2xl font-black mb-5 italic uppercase">⚔️ Forge Arena</h3>
@@ -159,7 +190,7 @@
         </div>
     </div>
 
-    <!-- Password Unlock Modal (for private rooms) -->
+    <!-- Password Unlock Modal -->
     <div id="password-modal" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/90 backdrop-blur-sm">
         <div class="bg-slate-900 max-w-sm w-full p-6 rounded-3xl border border-slate-700">
             <h3 class="text-xl font-black flex gap-2 items-center"><i data-lucide="key"></i> Private Arena</h3>
@@ -173,7 +204,7 @@
     </div>
 
     <script>
-        // ---------- GLOBAL STATE ----------
+        // GLOBAL STATE
         let currentRoomId = null;
         let currentRoomRef = null;
         let currentRoomPassword = null;
@@ -190,7 +221,8 @@
                 renderTournamentList(roomsList);
             }).catch(err => {
                 console.error("Error fetching rooms:", err);
-                document.getElementById('tournament-list').innerHTML = `<div class="py-16 text-center border-2 border-dashed border-red-800 rounded-2xl"><p class="text-red-500 text-xs font-bold">⚠️ Database connection error. Check Firebase rules.</p></div>`;
+                document.getElementById('tournament-list').innerHTML = `<div class="py-16 text-center border-2 border-dashed border-red-800 rounded-2xl"><p class="text-red-500 text-xs font-bold">⚠️ Database connection error. Check Firebase rules.</p><p class="text-slate-400 text-[9px] mt-2">Error: ${err.message}</p></div>`;
+                showToast("Firebase error: " + err.message, "error");
             });
         }
 
@@ -342,7 +374,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             ${teamsList.map(team => `
                                 <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
-                                    <div class="flex gap-2 items-center"><div class="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-[10px] font-black text-emerald-400">${team.name.slice(0,2)}</div><span class="font-bold text-sm">${escapeHtml(team.name)}</span></div>
+                                    <div class="flex gap-2 items-center"><div class="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-[10px] font-black text-emerald-400">${escapeHtml(team.name.slice(0,2))}</div><span class="font-bold text-sm">${escapeHtml(team.name)}</span></div>
                                     <button onclick="removeTeamGlobal('${team.id}')" class="text-slate-500 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                 </div>
                             `).join('')}
@@ -370,7 +402,7 @@
             }
             else if (currentTab === 'standings') {
                 const stats = calculateStatsFromCache();
-                container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl overflow-x-auto"><table class="w-full text-left min-w-[320px]"><thead><tr class="text-[9px] font-black text-slate-400 border-b border-slate-800"><th class="pb-3">Team</th><th class="text-center">P</th><th class="text-center">GD</th><th class="text-center">PTS</th><tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-b border-slate-800/30"><td class="py-3 font-bold text-sm">${escapeHtml(name)}</td><td class="text-center text-slate-300 text-xs">${s.p}</td><td class="text-center text-slate-300">${s.gd}</td><td class="text-center text-emerald-400 font-black">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
+                container.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl overflow-x-auto"><table class="w-full text-left min-w-[320px]"><thead><tr class="text-[9px] font-black text-slate-400 border-b border-slate-800"><th class="pb-3">Team</th><th class="text-center">P</th><th class="text-center">GD</th><th class="text-center">PTS</th></tr></thead><tbody>${stats.map(([name, s]) => `<tr class="border-b border-slate-800/30"><td class="py-3 font-bold text-sm">${escapeHtml(name)}</td><td class="text-center text-slate-300 text-xs">${s.p}</td><td class="text-center text-slate-300">${s.gd}</td><td class="text-center text-emerald-400 font-black">${s.pts}</td></tr>`).join('')}</tbody></table></div>`;
             }
             lucide.createIcons();
         }
@@ -445,7 +477,6 @@
                 const shuffled = [...teams].sort(()=>Math.random()-0.5);
                 const groupCount = Math.min(4, Math.floor(teams.length / 2) || 2);
                 const perGroup = Math.ceil(teams.length / groupCount);
-                let idx = 0;
                 groupAssignments = {};
                 for (let g = 1; g <= groupCount && shuffled.length; g++) {
                     const grpTeams = shuffled.splice(0, perGroup);
@@ -477,7 +508,11 @@
 
         async function createTournament() {
             const name = document.getElementById('new-name').value.trim();
-            if (!name) return alert("Enter arena name");
+            if (!name) {
+                alert("Enter arena name");
+                return;
+            }
+            
             const format = document.getElementById('new-format').value;
             const password = document.getElementById('new-password').value.trim();
             const newId = Date.now().toString() + Math.random().toString(36);
@@ -490,14 +525,28 @@
                 groupAssignments: null,
                 createdAt: Date.now()
             };
-            await firebase.database().ref(`tournaments/${newId}`).set(newRoom);
-            closeCreateModal();
-            fetchAllRooms();
+            
+            try {
+                showToast("Creating arena...", "info");
+                await firebase.database().ref(`tournaments/${newId}`).set(newRoom);
+                showToast("✅ Arena created successfully!", "success");
+                closeCreateModal();
+                document.getElementById('new-name').value = '';
+                document.getElementById('new-password').value = '';
+                fetchAllRooms();
+            } catch (error) {
+                console.error("Create error:", error);
+                showToast("❌ Failed to create arena: " + error.message, "error");
+                alert("Failed to create arena. Please check:\n1. Firebase Realtime Database is enabled\n2. Database rules are set to test mode\n\nError: " + error.message);
+            }
         }
 
         function clearAllData() {
             if (confirm("⚠️ DELETE ALL ARENAS globally? This cannot be undone.")) {
-                firebase.database().ref('tournaments').remove().then(()=>{ showDashboard(); });
+                firebase.database().ref('tournaments').remove().then(()=>{ 
+                    showDashboard();
+                    showToast("All arenas deleted", "success");
+                });
             }
         }
 
