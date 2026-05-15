@@ -3,28 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>eWAR | Global Arena</title>
+    <title>eWAR | Create Tournament</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
         * { font-family: 'Inter', sans-serif; }
         body { background-color: #0a0f18; color: #f1f5f9; }
-        .glass-card { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); }
-        .emerald-gradient { background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%); }
-        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 200; animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+            z-index: 100;
+            transition: transform 0.2s;
+        }
+        .fab:hover {
+            transform: scale(1.1);
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 30px;
+            max-width: 400px;
+            width: 90%;
+        }
+        input, select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            padding: 12px;
+            border-radius: 15px;
+            width: 100%;
+            margin-bottom: 15px;
+            color: white;
+        }
+        button {
+            padding: 12px 20px;
+            border-radius: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: #10b981;
+            color: #0f172a;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: white;
+        }
+        .arena-card {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .arena-card:hover {
+            background: #334155;
+            transform: translateX(5px);
+        }
     </style>
 </head>
-<body class="min-h-screen pb-28">
+<body>
 
-    <div id="toast" class="toast hidden"></div>
+    <!-- Simple Navigation -->
+    <div style="padding: 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #34d399, #06b6d4); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="trophy" style="color: #0f172a; width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <h1 style="font-weight: 900; font-size: 20px;">eWAR</h1>
+                <p style="font-size: 9px; color: #64748b;">GLOBAL ARENA</p>
+            </div>
+        </div>
+        <button onclick="deleteAllArenas()" style="background: #1e293b; padding: 8px 15px; border-radius: 12px; font-size: 12px;">
+            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Delete All
+        </button>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView" style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #1e293b; border-radius: 25px; padding: 30px; margin-bottom: 20px;">
+            <h2 style="font-size: 28px; font-weight: 900;">Live <span style="color: #10b981;">Arenas</span></h2>
+            <p style="color: #94a3b8; font-size: 12px;">Create or join a tournament room</p>
+        </div>
+        
+        <div id="arenaList">
+            <div style="text-align: center; padding: 50px; color: #64748b;">Loading arenas...</div>
+        </div>
+    </div>
+
+    <!-- Arena Detail View (hidden initially) -->
+    <div id="detailView" style="display: none; max-width: 800px; margin: 0 auto; padding: 20px;">
+        <button onclick="backToDashboard()" style="background: #1e293b; margin-bottom: 20px;">← Back to Arenas</button>
+        <div id="arenaDetail"></div>
+    </div>
+
+    <!-- FAB - CREATE BUTTON (VISIBLE) -->
+    <div class="fab" onclick="openCreateModal()">
+        <i data-lucide="plus" style="width: 32px; height: 32px; color: #0f172a; stroke-width: 3;"></i>
+    </div>
+
+    <!-- Create Tournament Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <h3 style="font-size: 24px; font-weight: 900; margin-bottom: 20px;">⚔️ Create Arena</h3>
+            <input type="text" id="arenaName" placeholder="Arena Name (e.g., Cyber Cup)">
+            <select id="arenaFormat">
+                <option value="Groups + Knockout">Groups + Knockout</option>
+                <option value="League Table (1 Leg)">League Table (1 Leg)</option>
+                <option value="League Table (2 Legs)">League Table (2 Legs)</option>
+            </select>
+            <input type="text" id="arenaPassword" placeholder="Password (leave empty for public)">
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="btn-secondary" onclick="closeCreateModal()" style="flex: 1;">Cancel</button>
+                <button class="btn-primary" onclick="createTournament()" style="flex: 1;">Create Arena</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // Firebase Config
+        // Firebase config
         const firebaseConfig = {
             apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
             authDomain: "ewar-fa1db.firebaseapp.com",
@@ -32,45 +157,20 @@
             storageBucket: "ewar-fa1db.firebasestorage.app",
             messagingSenderId: "287555570705",
             appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
-            measurementId: "G-3P3RYNZXL0",
             databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com"
         };
         
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        const auth = firebase.auth();
         
-        // Global variables
-        window.currentRoomId = null;
-        window.currentRoomRef = null;
-        window.localTournamentCache = null;
-        window.currentTab = 'teams';
+        let currentRoomId = null;
         
         // Helper functions
-        function showToast(message, type = "info") {
-            const toast = document.getElementById('toast');
-            toast.className = `toast ${type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg`;
-            toast.innerHTML = message;
-            toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 3000);
+        function generateId() {
+            return Date.now().toString() + '_' + Math.random().toString(36).substring(2, 8);
         }
         
-        function generateSafeId() {
-            return Date.now().toString() + '_' + Math.random().toString(36).substring(2, 10);
-        }
-        
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str).replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
-        
-        // Simple hash for passwords
         function simpleHash(str) {
             if (!str) return '';
             let hash = 0;
@@ -81,259 +181,245 @@
             return Math.abs(hash).toString(36);
         }
         
-        // Auth
-        auth.signInAnonymously().catch(error => {
-            console.error("Auth error:", error);
-            showToast("Running in limited mode", "error");
-        });
-        
-        // Fetch all rooms
-        window.fetchAllRooms = function() {
-            const roomsRef = db.ref('tournaments');
-            roomsRef.once('value').then((snap) => {
-                const data = snap.val() || {};
-                const roomsList = Object.entries(data).map(([id, val]) => ({ id, ...val }));
-                renderTournamentList(roomsList);
-            }).catch(err => {
-                console.error(err);
-                document.getElementById('tournament-list').innerHTML = '<div class="py-20 text-center text-red-500">Error loading rooms</div>';
-            });
-        };
-        
-        function renderTournamentList(rooms) {
-            const container = document.getElementById('tournament-list');
-            if (!rooms.length) {
-                container.innerHTML = '<div class="py-20 text-center border-2 border-dashed border-slate-800 rounded-2xl"><p class="text-slate-500 text-xs">No arenas — create one</p></div>';
-                document.getElementById('room-count-badge').innerText = '0';
-                return;
-            }
-            document.getElementById('room-count-badge').innerText = rooms.length;
-            container.innerHTML = '';
-            rooms.slice().reverse().forEach(room => {
-                const isPrivate = room.passwordHash && room.passwordHash !== '';
-                const div = document.createElement('div');
-                div.className = "bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-slate-800";
-                div.onclick = () => attemptEnterRoom(room.id, room.passwordHash);
-                div.innerHTML = `
-                    <div class="flex gap-3 items-center">
-                        <div class="w-11 h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                            <i data-lucide="${isPrivate ? 'lock' : 'globe'}" class="w-5 h-5 ${isPrivate ? 'text-amber-400' : 'text-emerald-400'}"></i>
+        // Load all arenas
+        function loadArenas() {
+            db.ref('tournaments').once('value').then(snapshot => {
+                const arenas = snapshot.val() || {};
+                const arenaList = document.getElementById('arenaList');
+                
+                if (Object.keys(arenas).length === 0) {
+                    arenaList.innerHTML = `
+                        <div style="text-align: center; padding: 50px; border: 2px dashed #334155; border-radius: 25px;">
+                            <p style="color: #64748b;">No arenas yet</p>
+                            <p style="color: #475569; font-size: 12px; margin-top: 10px;">Click the + button to create one</p>
                         </div>
-                        <div>
-                            <h4 class="font-bold">${escapeHtml(room.name)}</h4>
-                            <div class="flex gap-2 text-[9px]">
-                                <span class="text-emerald-400">${room.format || 'League'}</span>
-                                <span>•</span>
-                                <span>${room.teams?.length || 0} teams</span>
-                            </div>
-                        </div>
-                    </div>
-                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
-                `;
-                container.appendChild(div);
-            });
-            lucide.createIcons();
-        }
-        
-        window.attemptEnterRoom = function(roomId, passwordHash) {
-            if (passwordHash && passwordHash !== '') {
-                const pwd = prompt("Enter room password:");
-                if (pwd && simpleHash(pwd) === passwordHash) {
-                    joinRoomDirect(roomId);
-                } else if (pwd) {
-                    alert("Wrong password");
-                }
-            } else {
-                joinRoomDirect(roomId);
-            }
-        };
-        
-        function joinRoomDirect(roomId) {
-            if (window.currentRoomRef) window.currentRoomRef.off();
-            window.currentRoomId = roomId;
-            window.currentRoomRef = db.ref(`tournaments/${roomId}`);
-            window.currentRoomRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (!data) {
-                    alert("Room deleted");
-                    window.showDashboard();
+                    `;
                     return;
                 }
-                window.localTournamentCache = { id: roomId, ...data };
-                if (!document.getElementById('detail-view').classList.contains('hidden')) {
-                    refreshDetailUI();
+                
+                arenaList.innerHTML = '';
+                Object.entries(arenas).forEach(([id, arena]) => {
+                    const isPrivate = arena.passwordHash && arena.passwordHash !== '';
+                    const div = document.createElement('div');
+                    div.className = 'arena-card';
+                    div.onclick = () => joinArena(id, arena.passwordHash);
+                    div.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3 style="font-weight: bold; font-size: 18px;">${escapeHtml(arena.name)}</h3>
+                                <div style="display: flex; gap: 10px; margin-top: 5px; font-size: 11px;">
+                                    <span style="color: #10b981;">${arena.format || 'League'}</span>
+                                    <span style="color: #64748b;">•</span>
+                                    <span>${arena.teams?.length || 0} teams</span>
+                                    <span style="color: ${isPrivate ? '#f59e0b' : '#10b981'}">${isPrivate ? '🔒 Private' : '🌍 Public'}</span>
+                                </div>
+                            </div>
+                            <i data-lucide="chevron-right" style="width: 20px; height: 20px; color: #64748b;"></i>
+                        </div>
+                    `;
+                    arenaList.appendChild(div);
+                });
+                lucide.createIcons();
+            }).catch(err => {
+                console.error(err);
+                document.getElementById('arenaList').innerHTML = '<div style="color: red;">Error loading arenas. Check Firebase rules.</div>';
+            });
+        }
+        
+        function joinArena(roomId, passwordHash) {
+            if (passwordHash && passwordHash !== '') {
+                const pwd = prompt("Enter room password:");
+                if (!pwd || simpleHash(pwd) !== passwordHash) {
+                    alert("Wrong password!");
+                    return;
+                }
+            }
+            
+            currentRoomId = roomId;
+            
+            // Listen for realtime updates
+            db.ref(`tournaments/${roomId}`).on('value', (snapshot) => {
+                const arena = snapshot.val();
+                if (arena) {
+                    renderArenaDetail(arena);
                 }
             });
-            showDetailUI();
-        }
-        
-        function refreshDetailUI() {
-            if (!window.localTournamentCache) return;
-            document.getElementById('active-title').innerText = window.localTournamentCache.name || "Arena";
-            document.getElementById('active-format').innerText = window.localTournamentCache.format || "Unknown";
-            renderTabContent();
-        }
-        
-        function showDetailUI() {
-            document.getElementById('dashboard-view').classList.add('hidden');
-            document.getElementById('detail-view').classList.remove('hidden');
-            document.getElementById('fab').classList.add('hidden');
-            refreshDetailUI();
-        }
-        
-        window.showDashboard = function() {
-            if (window.currentRoomRef) {
-                window.currentRoomRef.off();
-                window.currentRoomRef = null;
-            }
-            window.currentRoomId = null;
-            document.getElementById('dashboard-view').classList.remove('hidden');
-            document.getElementById('detail-view').classList.add('hidden');
-            document.getElementById('fab').classList.remove('hidden');
-            window.fetchAllRooms();
-        };
-        
-        window.switchTab = function(tab) {
-            window.currentTab = tab;
-            renderTabContent();
-        };
-        
-        function renderTabContent() {
-            const t = window.localTournamentCache;
-            if (!t) return;
-            const container = document.getElementById('tab-content');
             
-            if (window.currentTab === 'teams') {
-                const teams = t.teams || [];
-                container.innerHTML = `
-                    <div class="space-y-4">
-                        <div class="bg-slate-900 p-5 rounded-2xl">
-                            <div class="flex gap-2">
-                                <input id="teamName" placeholder="Team name" class="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-700">
-                                <button onclick="addTeam()" class="bg-emerald-500 px-5 py-3 rounded-xl font-bold text-sm">Add</button>
-                            </div>
-                        </div>
+            document.getElementById('dashboardView').style.display = 'none';
+            document.getElementById('detailView').style.display = 'block';
+        }
+        
+        function renderArenaDetail(arena) {
+            const container = document.getElementById('arenaDetail');
+            const teams = arena.teams || [];
+            const matches = arena.matches || [];
+            
+            // Calculate standings
+            const standings = {};
+            teams.forEach(team => {
+                standings[team.name] = { wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, pts: 0 };
+            });
+            
+            matches.forEach(m => {
+                if (standings[m.t1] && standings[m.t2] && m.s1 !== null && m.s2 !== null) {
+                    standings[m.t1].gf += m.s1;
+                    standings[m.t1].ga += m.s2;
+                    standings[m.t2].gf += m.s2;
+                    standings[m.t2].ga += m.s1;
+                    
+                    if (m.s1 > m.s2) {
+                        standings[m.t1].wins++;
+                        standings[m.t1].pts += 3;
+                        standings[m.t2].losses++;
+                    } else if (m.s2 > m.s1) {
+                        standings[m.t2].wins++;
+                        standings[m.t2].pts += 3;
+                        standings[m.t1].losses++;
+                    } else {
+                        standings[m.t1].draws++;
+                        standings[m.t1].pts += 1;
+                        standings[m.t2].draws++;
+                        standings[m.t2].pts += 1;
+                    }
+                }
+            });
+            
+            const standingsList = Object.entries(standings).sort((a, b) => b[1].pts - a[1].pts);
+            
+            container.innerHTML = `
+                <div style="background: #1e293b; border-radius: 25px; padding: 25px; margin-bottom: 20px;">
+                    <h2 style="font-size: 28px; font-weight: 900;">${escapeHtml(arena.name)}</h2>
+                    <p style="color: #94a3b8; font-size: 12px;">${arena.format}</p>
+                </div>
+                
+                <!-- Teams Tab -->
+                <div style="margin-bottom: 30px;">
+                    <h3 style="font-weight: bold; margin-bottom: 15px;">Teams</h3>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <input type="text" id="newTeamName" placeholder="Team name" style="flex: 1;">
+                        <button onclick="addTeam()" class="btn-primary" style="padding: 12px 20px;">Add Team</button>
+                    </div>
+                    <div id="teamsList">
                         ${teams.map(team => `
-                            <div class="bg-slate-900/50 p-4 rounded-xl flex justify-between">
+                            <div style="background: #0f172a; padding: 12px 15px; border-radius: 12px; margin-bottom: 8px; display: flex; justify-content: space-between;">
                                 <span>${escapeHtml(team.name)}</span>
-                                <button onclick="removeTeam('${team.id}')" class="text-red-500 text-xs">Remove</button>
+                                <button onclick="removeTeam('${team.id}')" style="background: none; color: #ef4444; padding: 0;">Remove</button>
                             </div>
                         `).join('')}
-                        ${!teams.length ? '<div class="text-center text-slate-500 py-8">No teams yet</div>' : ''}
+                        ${teams.length === 0 ? '<div style="color: #64748b; text-align: center; padding: 20px;">No teams added yet</div>' : ''}
                     </div>
-                `;
-            }
-            else if (window.currentTab === 'matches') {
-                const matches = t.matches || [];
-                if (!matches.length) {
-                    container.innerHTML = `<button onclick="generateMatches()" class="w-full bg-emerald-500 py-5 rounded-2xl font-bold">Generate Fixtures</button>`;
-                } else {
-                    container.innerHTML = matches.map((m, idx) => `
-                        <div class="bg-slate-900 p-4 rounded-xl mb-3">
-                            <div class="text-[10px] text-slate-400 mb-2">${m.stage || 'League'}</div>
-                            <div class="flex gap-2 items-center">
-                                <div class="flex-1 text-sm font-bold">${escapeHtml(m.t1)}</div>
-                                <input type="number" value="${m.s1 ?? ''}" onchange="updateScore(${idx}, 's1', this.value)" class="w-16 bg-slate-800 p-2 rounded text-center">
-                                <span class="text-xs">VS</span>
-                                <input type="number" value="${m.s2 ?? ''}" onchange="updateScore(${idx}, 's2', this.value)" class="w-16 bg-slate-800 p-2 rounded text-center">
-                                <div class="flex-1 text-sm font-bold text-right">${escapeHtml(m.t2)}</div>
+                </div>
+                
+                <!-- Matches Tab -->
+                <div style="margin-bottom: 30px;">
+                    <h3 style="font-weight: bold; margin-bottom: 15px;">Matches</h3>
+                    ${matches.length === 0 ? `
+                        <button onclick="generateFixtures()" class="btn-primary" style="width: 100%;">Generate Fixtures</button>
+                    ` : `
+                        ${matches.map((m, idx) => `
+                            <div style="background: #0f172a; padding: 15px; border-radius: 15px; margin-bottom: 10px;">
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <div style="flex: 1; font-weight: bold;">${escapeHtml(m.t1)}</div>
+                                    <input type="number" id="score1_${idx}" value="${m.s1 ?? ''}" onchange="updateScore(${idx}, 's1', this.value)" style="width: 60px; text-align: center; margin-bottom: 0;">
+                                    <span>VS</span>
+                                    <input type="number" id="score2_${idx}" value="${m.s2 ?? ''}" onchange="updateScore(${idx}, 's2', this.value)" style="width: 60px; text-align: center; margin-bottom: 0;">
+                                    <div style="flex: 1; font-weight: bold; text-align: right;">${escapeHtml(m.t2)}</div>
+                                </div>
                             </div>
-                        </div>
-                    `).join('');
-                }
-            }
-            else if (window.currentTab === 'standings') {
-                const stats = calculateStandings();
-                container.innerHTML = `
-                    <div class="bg-slate-900 rounded-2xl overflow-hidden">
-                        <table class="w-full">
-                            <thead class="bg-slate-800">
-                                <tr class="text-[10px]">
-                                    <th class="p-3 text-left">Team</th>
-                                    <th class="p-3 text-center">P</th>
-                                    <th class="p-3 text-center">GD</th>
-                                    <th class="p-3 text-center">PTS</th>
-                                </tr>
+                        `).join('')}
+                    `}
+                </div>
+                
+                <!-- Standings Tab -->
+                <div>
+                    <h3 style="font-weight: bold; margin-bottom: 15px;">Standings</h3>
+                    <div style="background: #0f172a; border-radius: 15px; overflow-x: auto;">
+                        <table style="width: 100%;">
+                            <thead style="background: #1e293b;">
+                                <tr style="font-size: 12px;">
+                                    <th style="padding: 12px; text-align: left;">Team</th>
+                                    <th style="padding: 12px; text-align: center;">W</th>
+                                    <th style="padding: 12px; text-align: center;">D</th>
+                                    <th style="padding: 12px; text-align: center;">L</th>
+                                    <th style="padding: 12px; text-align: center;">GD</th>
+                                    <th style="padding: 12px; text-align: center;">PTS</th>
+                                 </tr>
                             </thead>
                             <tbody>
-                                ${stats.map(([name, s]) => `
-                                    <tr class="border-t border-slate-800">
-                                        <td class="p-3 font-bold">${escapeHtml(name)}</td>
-                                        <td class="p-3 text-center">${s.p}</td>
-                                        <td class="p-3 text-center">${s.gd}</td>
-                                        <td class="p-3 text-center text-emerald-400 font-bold">${s.pts}</td>
+                                ${standingsList.map(([name, stats]) => `
+                                    <tr style="border-top: 1px solid #334155;">
+                                        <td style="padding: 10px;">${escapeHtml(name)}</td>
+                                        <td style="padding: 10px; text-align: center;">${stats.wins}</td>
+                                        <td style="padding: 10px; text-align: center;">${stats.draws}</td>
+                                        <td style="padding: 10px; text-align: center;">${stats.losses}</td>
+                                        <td style="padding: 10px; text-align: center;">${stats.gf - stats.ga}</td>
+                                        <td style="padding: 10px; text-align: center; color: #10b981; font-weight: bold;">${stats.pts}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
-                `;
-            }
+                </div>
+            `;
             lucide.createIcons();
         }
         
-        function calculateStandings() {
-            const t = window.localTournamentCache;
-            const teams = t.teams || [];
-            const matches = t.matches || [];
-            const stats = {};
-            teams.forEach(team => stats[team.name] = { pts: 0, gd: 0, p: 0 });
-            matches.forEach(m => {
-                if (stats[m.t1] && stats[m.t2] && m.s1 !== null && m.s2 !== null) {
-                    stats[m.t1].p++;
-                    stats[m.t2].p++;
-                    stats[m.t1].gd += (m.s1 - m.s2);
-                    stats[m.t2].gd += (m.s2 - m.s1);
-                    if (m.s1 > m.s2) stats[m.t1].pts += 3;
-                    else if (m.s2 > m.s1) stats[m.t2].pts += 3;
-                    else { stats[m.t1].pts += 1; stats[m.t2].pts += 1; }
-                }
-            });
-            return Object.entries(stats).sort((a, b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd);
-        }
-        
-        // Global actions
+        // CRUD Operations
         window.addTeam = async function() {
-            const input = document.getElementById('teamName');
+            const input = document.getElementById('newTeamName');
             const name = input.value.trim();
             if (!name) return;
-            const t = window.localTournamentCache;
-            if ((t.teams || []).some(tm => tm.name === name)) {
-                alert("Team exists");
+            
+            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
+            const snapshot = await arenaRef.once('value');
+            const arena = snapshot.val();
+            const teams = arena.teams || [];
+            
+            if (teams.some(t => t.name === name)) {
+                alert("Team already exists!");
                 return;
             }
-            const newTeams = [...(t.teams || []), { id: generateSafeId(), name }];
-            await db.ref(`tournaments/${window.currentRoomId}`).update({ teams: newTeams });
+            
+            teams.push({ id: generateId(), name: name });
+            await arenaRef.update({ teams: teams });
             input.value = '';
         };
         
         window.removeTeam = async function(teamId) {
-            const t = window.localTournamentCache;
-            const newTeams = (t.teams || []).filter(tm => tm.id !== teamId);
-            await db.ref(`tournaments/${window.currentRoomId}`).update({ teams: newTeams });
+            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
+            const snapshot = await arenaRef.once('value');
+            const arena = snapshot.val();
+            const teams = (arena.teams || []).filter(t => t.id !== teamId);
+            await arenaRef.update({ teams: teams });
         };
         
         window.updateScore = async function(matchIdx, side, value) {
-            const t = window.localTournamentCache;
-            const matches = [...(t.matches || [])];
+            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
+            const snapshot = await arenaRef.once('value');
+            const arena = snapshot.val();
+            const matches = [...(arena.matches || [])];
             let num = value === '' ? null : Number(value);
             if (isNaN(num)) num = null;
             matches[matchIdx][side] = num;
-            await db.ref(`tournaments/${window.currentRoomId}`).update({ matches });
+            await arenaRef.update({ matches: matches });
         };
         
-        window.generateMatches = async function() {
-            const t = window.localTournamentCache;
-            const teams = t.teams || [];
+        window.generateFixtures = async function() {
+            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
+            const snapshot = await arenaRef.once('value');
+            const arena = snapshot.val();
+            const teams = arena.teams || [];
+            
             if (teams.length < 2) {
-                alert("Need at least 2 teams");
+                alert("Need at least 2 teams!");
                 return;
             }
+            
             const matches = [];
             for (let i = 0; i < teams.length; i++) {
                 for (let j = i + 1; j < teams.length; j++) {
                     matches.push({
-                        id: generateSafeId(),
+                        id: generateId(),
                         t1: teams[i].name,
                         t2: teams[j].name,
                         s1: null,
@@ -342,90 +428,7 @@
                     });
                 }
             }
-            await db.ref(`tournaments/${window.currentRoomId}`).update({ matches });
+            await arenaRef.update({ matches: matches });
         };
         
-        window.resetTournament = async function() {
-            if (confirm("Reset all matches?")) {
-                await db.ref(`tournaments/${window.currentRoomId}`).update({ matches: [] });
-            }
-        };
-        
-        // CREATE TOURNAMENT - FIXED
-        window.createTournament = async function() {
-            const name = document.getElementById('new-name').value.trim();
-            if (!name) {
-                alert("Enter arena name");
-                return;
-            }
-            
-            const format = document.getElementById('new-format').value;
-            const password = document.getElementById('new-password').value.trim();
-            const passwordHash = password ? simpleHash(password) : "";
-            const newId = generateSafeId();
-            
-            const newRoom = {
-                name: name,
-                format: format,
-                passwordHash: passwordHash,
-                teams: [],
-                matches: [],
-                createdAt: Date.now()
-            };
-            
-            try {
-                showToast("Creating arena...", "info");
-                await db.ref(`tournaments/${newId}`).set(newRoom);
-                showToast("Arena created!", "success");
-                closeCreateModal();
-                document.getElementById('new-name').value = '';
-                document.getElementById('new-password').value = '';
-                window.fetchAllRooms();
-            } catch (error) {
-                console.error("Create error:", error);
-                showToast("Error: " + error.message, "error");
-                alert("Failed to create: " + error.message);
-            }
-        };
-        
-        window.clearAllData = function() {
-            if (confirm("Delete ALL arenas?")) {
-                db.ref('tournaments').remove().then(() => {
-                    window.showDashboard();
-                    showToast("All arenas deleted", "success");
-                });
-            }
-        };
-        
-        window.openCreateModal = function() {
-            document.getElementById('create-modal').classList.remove('hidden');
-            document.getElementById('create-modal').classList.add('flex');
-        };
-        
-        window.closeCreateModal = function() {
-            document.getElementById('create-modal').classList.add('hidden');
-            document.getElementById('create-modal').classList.remove('flex');
-            document.getElementById('new-password').value = '';
-        };
-        
-        // Initialize
-        window.onload = () => {
-            window.fetchAllRooms();
-            lucide.createIcons();
-        };
-    </script>
-
-    <!-- UI -->
-    <nav class="sticky top-0 z-50 glass-card px-5 py-3 flex justify-between">
-        <div class="flex items-center gap-2 cursor-pointer" onclick="showDashboard()">
-            <div class="w-9 h-9 emerald-gradient rounded-xl flex items-center justify-center">
-                <i data-lucide="trophy" class="text-slate-900 w-5 h-5"></i>
-            </div>
-            <h1 class="font-black italic text-lg text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">eWAR</h1>
-        </div>
-        <button onclick="clearAllData()" class="p-2 bg-slate-900 rounded-xl">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
-        </button>
-    </nav>
-
-    <main id="dashboard-view" class="max-w-2xl mx
+        // CREATE TOURNAMENT - MAIN FU
