@@ -212,6 +212,12 @@
         let pendingJoinId = null;
         let currentTab = 'teams';
 
+        // Generate Firebase-safe ID (no dots, #, $, [, ], or /)
+        function generateSafeId() {
+            // Use timestamp + random numbers and letters (no dots)
+            return Date.now().toString() + '_' + Math.random().toString(36).substring(2, 15).replace(/\./g, '_');
+        }
+
         // Helper: fetch all rooms from Firebase
         function fetchAllRooms() {
             const roomsRef = firebase.database().ref('tournaments');
@@ -441,7 +447,7 @@
             const t = localTournamentCache;
             const exists = (t.teams || []).some(tm => tm.name.toLowerCase() === name.toLowerCase());
             if (exists) return alert("Team already in arena");
-            const newTeam = { id: Date.now().toString() + Math.random(), name: name };
+            const newTeam = { id: generateSafeId(), name: name };
             const newTeams = [...(t.teams || []), newTeam];
             await updateTournamentData({ teams: newTeams });
             input.value = '';
@@ -484,7 +490,7 @@
                     for (let i=0; i<grpTeams.length; i++) {
                         for (let j=i+1; j<grpTeams.length; j++) {
                             for (let leg=0; leg<legs; leg++) {
-                                newMatches.push({ id: Math.random().toString(36).substr(2,8), t1: grpTeams[i].name, t2: grpTeams[j].name, s1: null, s2: null, stage: 'Group Stage', grp: g });
+                                newMatches.push({ id: generateSafeId(), t1: grpTeams[i].name, t2: grpTeams[j].name, s1: null, s2: null, stage: 'Group Stage', grp: g });
                             }
                         }
                     }
@@ -493,7 +499,7 @@
                 for (let i=0; i<teams.length; i++) {
                     for (let j=i+1; j<teams.length; j++) {
                         for (let leg=0; leg<legs; leg++) {
-                            newMatches.push({ id: Math.random().toString(36).substr(2,8), t1: teams[i].name, t2: teams[j].name, s1: null, s2: null, stage: 'League' });
+                            newMatches.push({ id: generateSafeId(), t1: teams[i].name, t2: teams[j].name, s1: null, s2: null, stage: 'League' });
                         }
                     }
                 }
@@ -515,7 +521,8 @@
             
             const format = document.getElementById('new-format').value;
             const password = document.getElementById('new-password').value.trim();
-            const newId = Date.now().toString() + Math.random().toString(36);
+            // Use safe ID without dots or special characters
+            const newId = generateSafeId();
             const newRoom = {
                 name: name,
                 format: format,
@@ -537,7 +544,7 @@
             } catch (error) {
                 console.error("Create error:", error);
                 showToast("❌ Failed to create arena: " + error.message, "error");
-                alert("Failed to create arena. Please check:\n1. Firebase Realtime Database is enabled\n2. Database rules are set to test mode\n\nError: " + error.message);
+                alert("Failed to create arena. Error: " + error.message);
             }
         }
 
