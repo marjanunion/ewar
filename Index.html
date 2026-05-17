@@ -76,6 +76,25 @@
             <div class="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-20 -mt-20"></div>
         </section>
 
+        <!-- Firebase Rules Warning Indicator -->
+        <div id="rules-warning-box" class="hidden p-5 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-4">
+            <i data-lucide="alert-triangle" class="w-6 h-6 text-red-500 shrink-0 mt-0.5"></i>
+            <div>
+                <h4 class="font-bold text-sm text-red-400">Firebase Permission Denied</h4>
+                <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Your Firebase Realtime Database rules are currently blocking reads and writes. To fix this, go to your <b>Firebase Console &gt; Realtime Database &gt; Rules</b> and update them to:
+                </p>
+                <pre class="bg-slate-950 p-3 rounded-lg text-[10px] font-mono text-emerald-400 mt-2 overflow-x-auto select-all">
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}</pre>
+                <p class="text-[10px] text-slate-500 mt-2">Publish those rules in your console and this error message will disappear instantly.</p>
+            </div>
+        </div>
+
         <div class="space-y-4">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
@@ -175,10 +194,11 @@
          </div>
     </div>
 
-    <!-- Firebase Modular Scripts Integration -->
+    <!-- Unified Modules Script (Absolutely No Scope Conflicts) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         // Real Firebase configuration directly applied
         const firebaseConfig = {
@@ -192,16 +212,26 @@
             measurementId: "G-3P3RYNZXL0"
         };
 
+        // --- Core Unified Variables ---
+        let tournaments = [];
+        let activeTournamentId = null;
+        let currentTab = 'teams';
+        let targetedLockedId = null;
         let db = null;
         let dbRef = null;
+        let auth = null;
         let isFirebaseInitialized = false;
 
-        // Establish Cloud synchronization
+        // Establish Cloud synchronization & authentication
         try {
             if (firebaseConfig.apiKey) {
                 const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
                 db = getDatabase(app);
                 dbRef = ref(db, 'tournaments');
+                
+                // Sign in anonymously first to satisfy security rules on write operations
+                await signInAnonymously(auth);
                 isFirebaseInitialized = true;
                 
                 // Connection indicator update
@@ -209,13 +239,48 @@
                 document.getElementById('connection-icon').className = "w-3.5 h-3.5 text-emerald-500 animate-pulse";
             }
         } catch (e) {
-            console.warn("Firebase fallback trigger active.", e);
+            console.warn("Firebase initialization/auth offline fallback active.", e);
         }
 
-        // --- Global Operations Interface ---
-        window.saveData = function() {
+        // Clean-up fallback from LocalStorage if firebase is offline
+        if (!isFirebaseInitialized) {
+            tournaments = JSON.parse(localStorage.getItem('ewar_tournaments') || '[]');
+            sanitizeData();
+        }
+
+        function sanitizeData() {
+            if (!Array.isArray(tournaments)) {
+                tournaments = [];
+            }
+            tournaments.forEach(t => {
+                if (!t.teams || !Array.isArray(t.teams)) t.teams = [];
+                if (!t.matches || !Array.isArray(t.matches)) t.matches = [];
+            });
+        }
+
+        // --- Unified Sync Operations ---
+        function saveData() {
+            sanitizeData();
             if (isFirebaseInitialized) {
-                set(dbRef, tournaments);
+                set(dbRef, tournaments)
+                .then(() => {
+                    // Hide any rules-warning visual since database write succeeded
+                    const warningBox = document.getElementById('rules-warning-box');
+                    if (warningBox) warningBox.classList.add('hidden');
+                })
+                .catch(err => {
+                    console.error("Firebase write failed: ", err);
+                    // Show friendly diagnostic rules block on permission denial error
+                    if (err.message && err.message.includes("PERMISSION_DENIED")) {
+                        const warningBox = document.getElementById('rules-warning-box');
+                        if (warningBox) {
+                            warningBox.classList.remove('hidden');
+                            warningBox.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    } else {
+                        alert("Database write error: " + err.message);
+                    }
+                });
             } else {
                 localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
                 if (activeTournamentId === null) {
@@ -224,28 +289,54 @@
                     renderTabContent();
                 }
             }
-        };
+        }
 
         if (isFirebaseInitialized) {
             onValue(dbRef, (snapshot) => {
+                // Succeeded reading: Hide warning box
+                const warningBox = document.getElementById('rules-warning-box');
+                if (warningBox) warningBox.classList.add('hidden');
+
                 const data = snapshot.val();
-                tournaments = data || [];
+                if (data) {
+                    if (Array.isArray(data)) {
+                        tournaments = data.filter(Boolean);
+                    } else if (typeof data === 'object') {
+                        tournaments = Object.keys(data).map(key => {
+                            const item = data[key];
+                            if (item && typeof item === 'object') {
+                                if (!item.id) item.id = key;
+                                return item;
+                            }
+                            return null;
+                        }).filter(Boolean);
+                    } else {
+                        tournaments = [];
+                    }
+                } else {
+                    tournaments = [];
+                }
+
+                sanitizeData();
+
                 if (activeTournamentId === null) {
                     renderTournamentList();
                 } else {
                     renderTabContent();
                 }
+            }, (error) => {
+                console.error("Firebase Read Error:", error);
+                if (error.message && error.message.includes("PERMISSION_DENIED")) {
+                    const warningBox = document.getElementById('rules-warning-box');
+                    if (warningBox) {
+                        warningBox.classList.remove('hidden');
+                        warningBox.scrollIntoView({ behavior: 'smooth' });
+                    }
+                } else {
+                    alert("Database read access denied. Verify Realtime Database permissions/rules.");
+                }
             });
         }
-    </script>
-
-    <!-- Application Business Logic -->
-    <script>
-        // Offline array fallback
-        let tournaments = JSON.parse(localStorage.getItem('ewar_tournaments') || '[]');
-        let activeTournamentId = null;
-        let currentTab = 'teams';
-        let targetedLockedId = null;
 
         // --- Navigation ---
         function showDashboard() {
@@ -306,10 +397,18 @@
 
         // --- Data Mutators ---
         function createTournament() {
-            const name = document.getElementById('new-name').value;
-            const format = document.getElementById('new-format').value;
-            const pin = document.getElementById('new-pin').value;
-            if (!name) return;
+            const nameEl = document.getElementById('new-name');
+            const formatEl = document.getElementById('new-format');
+            const pinEl = document.getElementById('new-pin');
+
+            const name = nameEl ? nameEl.value.trim() : "";
+            const format = formatEl ? formatEl.value : "Groups + Knockout";
+            const pin = pinEl ? pinEl.value.trim() : "";
+
+            if (!name) {
+                alert("Please enter an Arena Name.");
+                return;
+            }
 
             const newT = {
                 id: Date.now().toString(),
@@ -324,15 +423,18 @@
 
             tournaments.push(newT);
             saveData();
+            
             toggleModal('create-modal', false);
-            document.getElementById('new-name').value = '';
-            document.getElementById('new-pin').value = '';
+            if (nameEl) nameEl.value = '';
+            if (pinEl) pinEl.value = '';
             renderTournamentList();
         }
 
         function addTeam(name) {
             if (!name.trim()) return;
             const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
+            if (!t.teams) t.teams = [];
             if (t.teams.some(x => x.name.toLowerCase() === name.trim().toLowerCase())) {
                 alert("This team name has already been registered.");
                 return;
@@ -344,12 +446,16 @@
 
         function removeTeam(teamId) {
             const t = tournaments.find(x => x.id === activeTournamentId);
-            t.teams = t.teams.filter(x => x.id !== teamId);
+            if (!t) return;
+            t.teams = (t.teams || []).filter(x => x.id !== teamId);
             saveData();
         }
 
+        // Updated function to correctly cast variables to numbers and prevent DB serialization bugs
         function setScore(matchIdx, s1, s2) {
             const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
+            if (!t.matches) t.matches = [];
             if (s1 !== null) t.matches[matchIdx].s1 = s1 === "" ? null : Number(s1);
             if (s2 !== null) t.matches[matchIdx].s2 = s2 === "" ? null : Number(s2);
             saveData();
@@ -358,6 +464,7 @@
         function resetCurrentTournament() {
             if (confirm("Reset current bracket/groups match data? teams will stay enrolled.")) {
                 const t = tournaments.find(x => x.id === activeTournamentId);
+                if (!t) return;
                 t.matches = [];
                 t.groupAssignments = null;
                 saveData();
@@ -365,6 +472,7 @@
             }
         }
 
+        // Modified locally to trigger clear both offline & online
         function clearAllData() {
             if (confirm("Erase all local/cloud data in this room?")) {
                 tournaments = [];
@@ -376,15 +484,17 @@
         // --- Core Group & League Generator Logic ---
         function generateStage() {
             const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
             const isGrouped = t.format.includes('Group');
+            const teamList = t.teams || [];
             
-            if (isGrouped && t.teams.length < 4) {
+            if (isGrouped && teamList.length < 4) {
                 alert("Groups require at least 4 teams.");
                 return;
             }
 
             const matches = [];
-            const teams = [...t.teams].sort(() => Math.random() - 0.5);
+            const teams = [...teamList].sort(() => Math.random() - 0.5);
             const legs = t.format.includes('2 Legs') ? 2 : 1;
             const groupAssignments = {};
 
@@ -437,12 +547,12 @@
         function calculateStats(teams, matches, filterGroup = null, groupAssignments = null) {
             const s = {};
             const relevantTeams = filterGroup 
-                ? teams.filter(t => groupAssignments?.[t.name] === filterGroup)
-                : teams;
+                ? (teams || []).filter(t => groupAssignments?.[t.name] === filterGroup)
+                : (teams || []);
 
             relevantTeams.forEach(t => s[t.name] = { pts: 0, gd: 0, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
             
-            matches.forEach(m => {
+            (matches || []).forEach(m => {
                 if (s[m.t1] && s[m.t2] && m.s1 !== null && m.s2 !== null) {
                     s[m.t1].p++; s[m.t2].p++;
                     s[m.t1].gf += m.s1; s[m.t1].ga += m.s2;
@@ -482,7 +592,7 @@
                             <div class="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                                 <span class="text-emerald-500/70">${t.format}</span>
                                 <span>•</span>
-                                <span>${t.teams.length} Teams</span>
+                                <span>${(t.teams || []).length} Teams</span>
                             </div>
                         </div>
                     </div>
@@ -493,9 +603,9 @@
             lucide.createIcons();
         }
 
-        // Renders tabs dynamically (hiding 'groups' tab unless Group Stage is active and assigned)
         function renderTabsNav() {
             const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
             const isGroupedT = t.format.includes('Group');
             const hasGroupsGenerated = t.groupAssignments && Object.keys(t.groupAssignments).length > 0;
             const bar = document.getElementById('tab-bar');
@@ -521,11 +631,12 @@
         function renderTabContent() {
             const container = document.getElementById('tab-content');
             const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
             const isGroupedT = t.format.includes('Group');
             container.innerHTML = '';
 
             if (currentTab === 'teams') {
-                const enrolledHtml = t.teams.map(team => `
+                const enrolledHtml = (t.teams || []).map(team => `
                     <div class="bg-slate-900/40 border border-slate-800/60 p-5 rounded-3xl flex justify-between items-center group">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-[10px] font-black text-emerald-500">
@@ -533,13 +644,13 @@
                             </div>
                             <p class="font-bold text-base">${team.name}</p>
                         </div>
-                        ${t.matches.length === 0 ? `<button onclick="removeTeam('${team.id}')" class="p-2 text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                        ${(t.matches || []).length === 0 ? `<button onclick="removeTeam('${team.id}')" class="p-2 text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
                     </div>
                 `).join('');
 
                 container.innerHTML = `
                     <div class="space-y-6">
-                        ${t.matches.length === 0 ? `
+                        ${(t.matches || []).length === 0 ? `
                             <div class="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] space-y-5">
                                 <div class="flex items-center gap-2 mb-2">
                                     <i data-lucide="plus" class="w-4 h-4 text-emerald-500"></i>
@@ -547,7 +658,7 @@
                                 </div>
                                 <div class="flex flex-col sm:flex-row gap-3">
                                     <input id="team-input" placeholder="Enter team name..." class="flex-1 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-sm outline-none" onkeydown="if(event.key==='Enter') addTeam(this.value)" />
-                                    <button onclick="addTeam(document.getElementById('team-input').value)" class="bg-emerald-500 text-slate-950 px-8 py-4 rounded-2xl font-black text-[11px] uppercase transition-transform active:scale-95">Add Team</button>
+                                    <button id="add-team-btn" class="bg-emerald-500 text-slate-950 px-8 py-4 rounded-2xl font-black text-[11px] uppercase transition-transform active:scale-95">Add Team</button>
                                 </div>
                             </div>
                         ` : ''}
@@ -556,11 +667,20 @@
                         </div>
                     </div>
                 `;
+
+                const addBtn = document.getElementById('add-team-btn');
+                if (addBtn) {
+                    addBtn.onclick = () => {
+                        const input = document.getElementById('team-input');
+                        addTeam(input.value);
+                        input.value = '';
+                    };
+                }
             }
 
             if (currentTab === 'groups' && isGroupedT && t.groupAssignments) {
                 const groupedMap = {};
-                t.teams.forEach(team => {
+                (t.teams || []).forEach(team => {
                     const gId = t.groupAssignments[team.name] || 'Unassigned';
                     if (!groupedMap[gId]) groupedMap[gId] = [];
                     groupedMap[gId].push(team);
@@ -589,7 +709,7 @@
             }
 
             if (currentTab === 'matches') {
-                if (t.matches.length === 0) {
+                if ((t.matches || []).length === 0) {
                     container.innerHTML = `
                         <div class="text-center space-y-4 py-8">
                             <button onclick="generateStage()" class="w-full bg-emerald-500 text-slate-950 py-6 rounded-[2.5rem] font-black text-[12px] uppercase shadow-2xl shadow-emerald-500/20 active:scale-[0.98] transition-all">
@@ -598,7 +718,7 @@
                         </div>
                     `;
                 } else {
-                    const matchesHtml = t.matches.map((m, idx) => `
+                    const matchesHtml = (t.matches || []).map((m, idx) => `
                         <div class="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
                             <div class="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 <span>Match ${idx + 1}</span>
@@ -622,7 +742,7 @@
             }
 
             if (currentTab === 'standings') {
-                if (t.matches.length === 0) {
+                if ((t.matches || []).length === 0) {
                     container.innerHTML = `
                         <div class="py-12 text-center text-slate-600">
                             <p class="text-[10px] font-black uppercase tracking-widest">Standings will populate after bracket generation.</p>
@@ -632,7 +752,7 @@
                     const groupIds = t.groupAssignments ? Array.from(new Set(Object.values(t.groupAssignments))).sort((a,b)=>a-b) : [null];
                     
                     container.innerHTML = groupIds.map(gid => {
-                        const stats = calculateStats(t.teams, t.matches, gid, t.groupAssignments);
+                        const stats = calculateStats(t.teams || [], t.matches || [], gid, t.groupAssignments);
                         return `
                             <div class="mb-10 animate-slide-up">
                                 ${gid ? `<h3 class="text-xs font-black uppercase text-emerald-500 tracking-widest mb-4 ml-4">Group ${gid}</h3>` : ''}
@@ -672,6 +792,24 @@
 
             lucide.createIcons();
         }
+
+        // --- Expose Navigation & Event Handler Bindings on Window Scope ---
+        window.showDashboard = showDashboard;
+        window.attemptJoinDetail = attemptJoinDetail;
+        window.unlockRoom = unlockRoom;
+        window.showDetail = showDetail;
+        window.switchTab = switchTab;
+        window.toggleModal = toggleModal;
+        window.createTournament = createTournament;
+        window.addTeam = addTeam;
+        window.removeTeam = removeTeam;
+        window.setScore = setScore;
+        window.resetCurrentTournament = resetCurrentTournament;
+        window.clearAllData = clearAllData;
+        window.generateStage = generateStage;
+
+        // Init layout list
+        renderTournamentList();
     </script>
 </body>
 </html>
