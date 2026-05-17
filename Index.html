@@ -2,433 +2,676 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>eWAR | Create Tournament</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eWAR | Real-Time Arena</title>
+    <!-- Tailwind CSS for modern aesthetics -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        * { font-family: 'Inter', sans-serif; }
-        body { background-color: #0a0f18; color: #f1f5f9; }
-        .fab {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            border-radius: 30px;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0f18;
+            color: #f1f5f9;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.3);
+        }
+
+        .emerald-gradient {
             background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-            z-index: 100;
-            transition: transform 0.2s;
         }
-        .fab:hover {
-            transform: scale(1.1);
+
+        input:focus, select:focus {
+            border-color: #10b981 !important;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
         }
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.9);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 200;
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .modal.active {
-            display: flex;
-        }
-        .modal-content {
-            background: #1e293b;
-            padding: 30px;
-            border-radius: 30px;
-            max-width: 400px;
-            width: 90%;
-        }
-        input, select {
-            background: #0f172a;
-            border: 1px solid #334155;
-            padding: 12px;
-            border-radius: 15px;
-            width: 100%;
-            margin-bottom: 15px;
-            color: white;
-        }
-        button {
-            padding: 12px 20px;
-            border-radius: 15px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .btn-primary {
-            background: #10b981;
-            color: #0f172a;
-        }
-        .btn-secondary {
-            background: #334155;
-            color: white;
-        }
-        .arena-card {
-            background: #1e293b;
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .arena-card:hover {
-            background: #334155;
-            transform: translateX(5px);
-        }
+        .animate-slide-up { animation: slideUp 0.3s ease-out forwards; }
     </style>
 </head>
-<body>
+<body class="min-h-screen pb-24">
 
-    <!-- Simple Navigation -->
-    <div style="padding: 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #34d399, #06b6d4); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                <i data-lucide="trophy" style="color: #0f172a; width: 22px; height: 22px;"></i>
+    <!-- Top Navigation Bar -->
+    <nav class="sticky top-0 z-50 glass-card border-b border-slate-800/50 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3 cursor-pointer" onclick="showDashboard()">
+            <div class="w-10 h-10 emerald-gradient rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20 rotate-3 transition-transform hover:rotate-0">
+                <i data-lucide="trophy" class="text-slate-900 w-6 h-6"></i>
             </div>
             <div>
-                <h1 style="font-weight: 900; font-size: 20px;">eWAR</h1>
-                <p style="font-size: 9px; color: #64748b;">GLOBAL ARENA</p>
+                <h1 class="font-black italic text-xl leading-tight tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">eWAR</h1>
+                <p class="text-[9px] font-bold text-slate-500 tracking-[0.2em] uppercase -mt-1">Real-Time Arena</p>
             </div>
         </div>
-        <button onclick="deleteAllArenas()" style="background: #1e293b; padding: 8px 15px; border-radius: 12px; font-size: 12px;">
-            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Delete All
-        </button>
-    </div>
+        <div class="flex items-center gap-4">
+            <div class="hidden sm:flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+                <i data-lucide="wifi" id="connection-icon" class="w-3.5 h-3.5 text-slate-500"></i>
+                <span id="connection-status" class="text-[9px] font-mono font-bold text-slate-400">OFFLINE MODE</span>
+            </div>
+            <button onclick="clearAllData()" class="p-2.5 bg-slate-900 rounded-xl border border-slate-800 hover:bg-red-500/10 hover:border-red-500/50 group transition-all">
+                <i data-lucide="trash-2" class="w-4 h-4 text-slate-500 group-hover:text-red-500"></i>
+            </button>
+        </div>
+    </nav>
 
     <!-- Dashboard View -->
-    <div id="dashboardView" style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: #1e293b; border-radius: 25px; padding: 30px; margin-bottom: 20px;">
-            <h2 style="font-size: 28px; font-weight: 900;">Live <span style="color: #10b981;">Arenas</span></h2>
-            <p style="color: #94a3b8; font-size: 12px;">Create or join a tournament room</p>
+    <main id="dashboard-view" class="max-w-2xl mx-auto p-6 space-y-8 animate-slide-up">
+        <section class="relative overflow-hidden bg-slate-900 rounded-[2rem] p-8 border border-slate-800 shadow-2xl">
+            <div class="relative z-10">
+                <h2 class="text-3xl font-black mb-2 tracking-tight">Sync <span class="text-emerald-400">Enabled.</span></h2>
+                <p class="text-slate-400 text-sm max-w-[280px] leading-relaxed">Changes update live across all active sessions instantly.</p>
+            </div>
+            <div class="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-20 -mt-20"></div>
+        </section>
+
+        <div class="space-y-4">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                    <i data-lucide="layout-dashboard" class="w-3 h-3"></i> Active Rooms
+                </h3>
+            </div>
+            
+            <div id="tournament-list" class="grid gap-3">
+                <!-- Dynamic Tournament list will build here -->
+            </div>
         </div>
-        
-        <div id="arenaList">
-            <div style="text-align: center; padding: 50px; color: #64748b;">Loading arenas...</div>
+    </main>
+
+    <!-- Detail View -->
+    <main id="detail-view" class="max-w-4xl mx-auto hidden animate-slide-up">
+        <div class="p-6 bg-[#0a0f18] border-b border-slate-800 sticky top-16 z-40 backdrop-blur-md">
+            <div class="flex justify-between items-start mb-4">
+                <button onclick="showDashboard()" class="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase hover:gap-3 transition-all">
+                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Return to Dashboard
+                </button>
+                <button onclick="resetCurrentTournament()" class="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-500 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset Data
+                </button>
+            </div>
+            <div class="flex justify-between items-end">
+                <div>
+                    <h2 id="active-title" class="text-2xl sm:text-3xl font-black uppercase tracking-tight flex items-center gap-2">Tournament Name</h2>
+                    <p id="active-format" class="text-slate-500 text-[10px] font-black uppercase tracking-widest">FORMAT</p>
+                </div>
+                <div class="flex items-center gap-1.5 bg-emerald-500 px-4 py-1.5 rounded-full text-slate-950 text-[10px] font-black uppercase shadow-lg shadow-emerald-500/20">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Admin Control
+                </div>
+            </div>
         </div>
-    </div>
 
-    <!-- Arena Detail View (hidden initially) -->
-    <div id="detailView" style="display: none; max-width: 800px; margin: 0 auto; padding: 20px;">
-        <button onclick="backToDashboard()" style="background: #1e293b; margin-bottom: 20px;">← Back to Arenas</button>
-        <div id="arenaDetail"></div>
-    </div>
+        <!-- Dynamic Tabs Navigation -->
+        <div class="flex bg-slate-900/50 border-b border-slate-800 sticky top-[168px] z-40 backdrop-blur-md overflow-x-auto no-scrollbar" id="tab-bar">
+            <!-- Programmatic tab buttons generate here based on format configuration -->
+        </div>
 
-    <!-- FAB - CREATE BUTTON (VISIBLE) -->
-    <div class="fab" onclick="openCreateModal()">
-        <i data-lucide="plus" style="width: 32px; height: 32px; color: #0f172a; stroke-width: 3;"></i>
-    </div>
+        <div id="tab-content" class="p-6">
+            <!-- Content panels injected here -->
+        </div>
+    </main>
 
-    <!-- Create Tournament Modal -->
-    <div id="createModal" class="modal">
-        <div class="modal-content">
-            <h3 style="font-size: 24px; font-weight: 900; margin-bottom: 20px;">⚔️ Create Arena</h3>
-            <input type="text" id="arenaName" placeholder="Arena Name (e.g., Cyber Cup)">
-            <select id="arenaFormat">
-                <option value="Groups + Knockout">Groups + Knockout</option>
-                <option value="League Table (1 Leg)">League Table (1 Leg)</option>
-                <option value="League Table (2 Legs)">League Table (2 Legs)</option>
-            </select>
-            <input type="text" id="arenaPassword" placeholder="Password (leave empty for public)">
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button class="btn-secondary" onclick="closeCreateModal()" style="flex: 1;">Cancel</button>
-                <button class="btn-primary" onclick="createTournament()" style="flex: 1;">Create Arena</button>
+    <!-- Floating Action Button (Only on Dashboard) -->
+    <button id="fab" onclick="toggleModal('create-modal', true)" class="fixed bottom-8 right-8 bg-emerald-500 text-slate-950 p-5 rounded-[2rem] shadow-2xl shadow-emerald-500/40 z-[70] border-4 border-[#0a0f18] active:scale-90 transition-transform">
+        <i data-lucide="plus" class="w-8 h-8" stroke-width="3"></i>
+    </button>
+
+    <!-- Create Modal -->
+    <div id="create-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-[#0a0f18]/95 backdrop-blur-md">
+        <div class="bg-slate-900 w-full max-w-sm rounded-[3rem] p-8 sm:p-10 border border-slate-800 shadow-2xl">
+            <h3 class="text-2xl sm:text-3xl font-black mb-8 tracking-tighter italic uppercase">Forge Arena</h3>
+            <div class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-500 ml-2">Arena Name</label>
+                    <input id="new-name" placeholder="Pro League Season 1..." class="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none transition-colors" />
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-500 ml-2">Tournament Format</label>
+                    <select id="new-format" class="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none font-bold appearance-none">
+                        <option value="Groups + Knockout">Groups + Knockout</option>
+                        <option value="League Table (1 Leg)">League (1 Leg)</option>
+                        <option value="League Table (2 Legs)">League (2 Legs)</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-500 ml-2">Access PIN (Optional)</label>
+                    <input id="new-pin" type="password" placeholder="••••" class="w-full p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-sm outline-none transition-colors" />
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button onclick="toggleModal('create-modal', false)" class="flex-1 p-4 rounded-2xl font-black text-[10px] uppercase border border-slate-800">Abort</button>
+                    <button onclick="createTournament()" class="flex-1 bg-emerald-500 text-slate-950 p-4 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-transform">Initialize</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Firebase config
+    <!-- PIN Prompt Modal -->
+    <div id="pin-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-[#0a0f18]/95 backdrop-blur-md">
+         <div class="bg-slate-900 w-full max-w-xs rounded-[3rem] p-10 border border-slate-800 text-center">
+            <div class="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i data-lucide="lock" class="w-8 h-8 text-amber-500"></i>
+            </div>
+            <h3 class="font-black text-xl mb-6 tracking-tight uppercase italic text-amber-500">Protected Entry</h3>
+            <input 
+              id="entered-pin"
+              type="password" 
+              placeholder="PIN CODE" 
+              class="w-full p-5 rounded-[2rem] bg-slate-950 border border-slate-800 text-center text-xl tracking-[0.3em] mb-8 outline-none" 
+            />
+            <div class="flex gap-3">
+                <button onclick="toggleModal('pin-modal', false)" class="flex-1 p-4 rounded-2xl border border-slate-800 font-black text-[10px] uppercase">Cancel</button>
+                <button onclick="unlockRoom()" class="flex-1 bg-amber-500 text-slate-950 p-4 rounded-2xl font-black text-[10px] uppercase active:scale-95">Unlock</button>
+            </div>
+         </div>
+    </div>
+
+    <!-- Firebase Modular Scripts Integration -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Real Firebase configuration directly applied
         const firebaseConfig = {
             apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
             authDomain: "ewar-fa1db.firebaseapp.com",
+            databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com",
             projectId: "ewar-fa1db",
             storageBucket: "ewar-fa1db.firebasestorage.app",
             messagingSenderId: "287555570705",
             appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
-            databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com"
+            measurementId: "G-3P3RYNZXL0"
         };
-        
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        
-        let currentRoomId = null;
-        
-        // Helper functions
-        function generateId() {
-            return Date.now().toString() + '_' + Math.random().toString(36).substring(2, 8);
-        }
-        
-        function simpleHash(str) {
-            if (!str) return '';
-            let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                hash = ((hash << 5) - hash) + str.charCodeAt(i);
-                hash = hash & hash;
+
+        let db = null;
+        let dbRef = null;
+        let isFirebaseInitialized = false;
+
+        // Establish Cloud synchronization
+        try {
+            if (firebaseConfig.apiKey) {
+                const app = initializeApp(firebaseConfig);
+                db = getDatabase(app);
+                dbRef = ref(db, 'tournaments');
+                isFirebaseInitialized = true;
+                
+                // Connection indicator update
+                document.getElementById('connection-status').innerText = "LIVE CLOUD CONNECTED";
+                document.getElementById('connection-icon').className = "w-3.5 h-3.5 text-emerald-500 animate-pulse";
             }
-            return Math.abs(hash).toString(36);
+        } catch (e) {
+            console.warn("Firebase fallback trigger active.", e);
         }
-        
-        // Load all arenas
-        function loadArenas() {
-            db.ref('tournaments').once('value').then(snapshot => {
-                const arenas = snapshot.val() || {};
-                const arenaList = document.getElementById('arenaList');
-                
-                if (Object.keys(arenas).length === 0) {
-                    arenaList.innerHTML = `
-                        <div style="text-align: center; padding: 50px; border: 2px dashed #334155; border-radius: 25px;">
-                            <p style="color: #64748b;">No arenas yet</p>
-                            <p style="color: #475569; font-size: 12px; margin-top: 10px;">Click the + button to create one</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                arenaList.innerHTML = '';
-                Object.entries(arenas).forEach(([id, arena]) => {
-                    const isPrivate = arena.passwordHash && arena.passwordHash !== '';
-                    const div = document.createElement('div');
-                    div.className = 'arena-card';
-                    div.onclick = () => joinArena(id, arena.passwordHash);
-                    div.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <h3 style="font-weight: bold; font-size: 18px;">${escapeHtml(arena.name)}</h3>
-                                <div style="display: flex; gap: 10px; margin-top: 5px; font-size: 11px;">
-                                    <span style="color: #10b981;">${arena.format || 'League'}</span>
-                                    <span style="color: #64748b;">•</span>
-                                    <span>${arena.teams?.length || 0} teams</span>
-                                    <span style="color: ${isPrivate ? '#f59e0b' : '#10b981'}">${isPrivate ? '🔒 Private' : '🌍 Public'}</span>
-                                </div>
-                            </div>
-                            <i data-lucide="chevron-right" style="width: 20px; height: 20px; color: #64748b;"></i>
-                        </div>
-                    `;
-                    arenaList.appendChild(div);
-                });
-                lucide.createIcons();
-            }).catch(err => {
-                console.error(err);
-                document.getElementById('arenaList').innerHTML = '<div style="color: red;">Error loading arenas. Check Firebase rules.</div>';
-            });
-        }
-        
-        function joinArena(roomId, passwordHash) {
-            if (passwordHash && passwordHash !== '') {
-                const pwd = prompt("Enter room password:");
-                if (!pwd || simpleHash(pwd) !== passwordHash) {
-                    alert("Wrong password!");
-                    return;
+
+        // --- Global Operations Interface ---
+        window.saveData = function() {
+            if (isFirebaseInitialized) {
+                set(dbRef, tournaments);
+            } else {
+                localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
+                if (activeTournamentId === null) {
+                    renderTournamentList();
+                } else {
+                    renderTabContent();
                 }
             }
-            
-            currentRoomId = roomId;
-            
-            // Listen for realtime updates
-            db.ref(`tournaments/${roomId}`).on('value', (snapshot) => {
-                const arena = snapshot.val();
-                if (arena) {
-                    renderArenaDetail(arena);
+        };
+
+        if (isFirebaseInitialized) {
+            onValue(dbRef, (snapshot) => {
+                const data = snapshot.val();
+                tournaments = data || [];
+                if (activeTournamentId === null) {
+                    renderTournamentList();
+                } else {
+                    renderTabContent();
                 }
             });
-            
-            document.getElementById('dashboardView').style.display = 'none';
-            document.getElementById('detailView').style.display = 'block';
         }
-        
-        function renderArenaDetail(arena) {
-            const container = document.getElementById('arenaDetail');
-            const teams = arena.teams || [];
-            const matches = arena.matches || [];
+    </script>
+
+    <!-- Application Business Logic -->
+    <script>
+        // Offline array fallback
+        let tournaments = JSON.parse(localStorage.getItem('ewar_tournaments') || '[]');
+        let activeTournamentId = null;
+        let currentTab = 'teams';
+        let targetedLockedId = null;
+
+        // --- Navigation ---
+        function showDashboard() {
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('fab').classList.remove('hidden');
+            activeTournamentId = null;
+            renderTournamentList();
+        }
+
+        function attemptJoinDetail(id) {
+            const t = tournaments.find(x => x.id === id);
+            if (t.password && t.password.trim() !== '') {
+                targetedLockedId = id;
+                document.getElementById('entered-pin').value = '';
+                toggleModal('pin-modal', true);
+            } else {
+                showDetail(id);
+            }
+        }
+
+        function unlockRoom() {
+            const pin = document.getElementById('entered-pin').value;
+            const t = tournaments.find(x => x.id === targetedLockedId);
+            if (t && t.password === pin) {
+                toggleModal('pin-modal', false);
+                showDetail(targetedLockedId);
+                targetedLockedId = null;
+            } else {
+                alert("Incorrect Pin Code.");
+            }
+        }
+
+        function showDetail(id) {
+            activeTournamentId = id;
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('detail-view').classList.remove('hidden');
+            document.getElementById('fab').classList.add('hidden');
             
-            // Calculate standings
-            const standings = {};
-            teams.forEach(team => {
-                standings[team.name] = { wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, pts: 0 };
-            });
+            const t = tournaments.find(x => x.id === id);
+            document.getElementById('active-title').innerText = t.name;
+            document.getElementById('active-format').innerText = t.format;
             
-            matches.forEach(m => {
-                if (standings[m.t1] && standings[m.t2] && m.s1 !== null && m.s2 !== null) {
-                    standings[m.t1].gf += m.s1;
-                    standings[m.t1].ga += m.s2;
-                    standings[m.t2].gf += m.s2;
-                    standings[m.t2].ga += m.s1;
-                    
-                    if (m.s1 > m.s2) {
-                        standings[m.t1].wins++;
-                        standings[m.t1].pts += 3;
-                        standings[m.t2].losses++;
-                    } else if (m.s2 > m.s1) {
-                        standings[m.t2].wins++;
-                        standings[m.t2].pts += 3;
-                        standings[m.t1].losses++;
-                    } else {
-                        standings[m.t1].draws++;
-                        standings[m.t1].pts += 1;
-                        standings[m.t2].draws++;
-                        standings[m.t2].pts += 1;
+            currentTab = 'teams';
+            renderTabsNav();
+            renderTabContent();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            renderTabsNav();
+            renderTabContent();
+        }
+
+        function toggleModal(id, show) {
+            document.getElementById(id).classList.toggle('hidden', !show);
+        }
+
+        // --- Data Mutators ---
+        function createTournament() {
+            const name = document.getElementById('new-name').value;
+            const format = document.getElementById('new-format').value;
+            const pin = document.getElementById('new-pin').value;
+            if (!name) return;
+
+            const newT = {
+                id: Date.now().toString(),
+                name: name,
+                format: format,
+                password: pin,
+                teams: [],
+                matches: [],
+                groupAssignments: null,
+                createdAt: Date.now()
+            };
+
+            tournaments.push(newT);
+            saveData();
+            toggleModal('create-modal', false);
+            document.getElementById('new-name').value = '';
+            document.getElementById('new-pin').value = '';
+            renderTournamentList();
+        }
+
+        function addTeam(name) {
+            if (!name.trim()) return;
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (t.teams.some(x => x.name.toLowerCase() === name.trim().toLowerCase())) {
+                alert("This team name has already been registered.");
+                return;
+            }
+            
+            t.teams.push({ id: crypto.randomUUID(), name: name.trim() });
+            saveData();
+        }
+
+        function removeTeam(teamId) {
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            t.teams = t.teams.filter(x => x.id !== teamId);
+            saveData();
+        }
+
+        function setScore(matchIdx, s1, s2) {
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (s1 !== null) t.matches[matchIdx].s1 = s1 === "" ? null : Number(s1);
+            if (s2 !== null) t.matches[matchIdx].s2 = s2 === "" ? null : Number(s2);
+            saveData();
+        }
+
+        function resetCurrentTournament() {
+            if (confirm("Reset current bracket/groups match data? teams will stay enrolled.")) {
+                const t = tournaments.find(x => x.id === activeTournamentId);
+                t.matches = [];
+                t.groupAssignments = null;
+                saveData();
+                switchTab('teams');
+            }
+        }
+
+        function clearAllData() {
+            if (confirm("Erase all local/cloud data in this room?")) {
+                tournaments = [];
+                saveData();
+                showDashboard();
+            }
+        }
+
+        // --- Core Group & League Generator Logic ---
+        function generateStage() {
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            const isGrouped = t.format.includes('Group');
+            
+            if (isGrouped && t.teams.length < 4) {
+                alert("Groups require at least 4 teams.");
+                return;
+            }
+
+            const matches = [];
+            const teams = [...t.teams].sort(() => Math.random() - 0.5);
+            const legs = t.format.includes('2 Legs') ? 2 : 1;
+            const groupAssignments = {};
+
+            if (isGrouped) {
+                let remaining = [...teams];
+                let groupIdx = 0;
+                let groupCount = teams.length > 8 ? Math.floor(teams.length / 4) : 2;
+                if (teams.length === 6) groupCount = 2;
+                const teamsPerGroup = Math.ceil(teams.length / groupCount);
+
+                while (remaining.length > 0) {
+                    groupIdx++;
+                    const group = remaining.splice(0, teamsPerGroup);
+                    group.forEach(team => groupAssignments[team.name] = groupIdx);
+
+                    for (let i = 0; i < group.length; i++) {
+                        for (let j = i + 1; j < group.length; j++) {
+                            for (let l = 0; l < legs; l++) {
+                                matches.push({
+                                    id: crypto.randomUUID(),
+                                    t1: group[i].name, t2: group[j].name,
+                                    s1: null, s2: null, stage: 'Group Stage', grp: groupIdx
+                                });
+                            }
+                        }
                     }
                 }
-            });
-            
-            const standingsList = Object.entries(standings).sort((a, b) => b[1].pts - a[1].pts);
-            
-            container.innerHTML = `
-                <div style="background: #1e293b; border-radius: 25px; padding: 25px; margin-bottom: 20px;">
-                    <h2 style="font-size: 28px; font-weight: 900;">${escapeHtml(arena.name)}</h2>
-                    <p style="color: #94a3b8; font-size: 12px;">${arena.format}</p>
-                </div>
-                
-                <!-- Teams Tab -->
-                <div style="margin-bottom: 30px;">
-                    <h3 style="font-weight: bold; margin-bottom: 15px;">Teams</h3>
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <input type="text" id="newTeamName" placeholder="Team name" style="flex: 1;">
-                        <button onclick="addTeam()" class="btn-primary" style="padding: 12px 20px;">Add Team</button>
-                    </div>
-                    <div id="teamsList">
-                        ${teams.map(team => `
-                            <div style="background: #0f172a; padding: 12px 15px; border-radius: 12px; margin-bottom: 8px; display: flex; justify-content: space-between;">
-                                <span>${escapeHtml(team.name)}</span>
-                                <button onclick="removeTeam('${team.id}')" style="background: none; color: #ef4444; padding: 0;">Remove</button>
-                            </div>
-                        `).join('')}
-                        ${teams.length === 0 ? '<div style="color: #64748b; text-align: center; padding: 20px;">No teams added yet</div>' : ''}
-                    </div>
-                </div>
-                
-                <!-- Matches Tab -->
-                <div style="margin-bottom: 30px;">
-                    <h3 style="font-weight: bold; margin-bottom: 15px;">Matches</h3>
-                    ${matches.length === 0 ? `
-                        <button onclick="generateFixtures()" class="btn-primary" style="width: 100%;">Generate Fixtures</button>
-                    ` : `
-                        ${matches.map((m, idx) => `
-                            <div style="background: #0f172a; padding: 15px; border-radius: 15px; margin-bottom: 10px;">
-                                <div style="display: flex; gap: 10px; align-items: center;">
-                                    <div style="flex: 1; font-weight: bold;">${escapeHtml(m.t1)}</div>
-                                    <input type="number" id="score1_${idx}" value="${m.s1 ?? ''}" onchange="updateScore(${idx}, 's1', this.value)" style="width: 60px; text-align: center; margin-bottom: 0;">
-                                    <span>VS</span>
-                                    <input type="number" id="score2_${idx}" value="${m.s2 ?? ''}" onchange="updateScore(${idx}, 's2', this.value)" style="width: 60px; text-align: center; margin-bottom: 0;">
-                                    <div style="flex: 1; font-weight: bold; text-align: right;">${escapeHtml(m.t2)}</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    `}
-                </div>
-                
-                <!-- Standings Tab -->
-                <div>
-                    <h3 style="font-weight: bold; margin-bottom: 15px;">Standings</h3>
-                    <div style="background: #0f172a; border-radius: 15px; overflow-x: auto;">
-                        <table style="width: 100%;">
-                            <thead style="background: #1e293b;">
-                                <tr style="font-size: 12px;">
-                                    <th style="padding: 12px; text-align: left;">Team</th>
-                                    <th style="padding: 12px; text-align: center;">W</th>
-                                    <th style="padding: 12px; text-align: center;">D</th>
-                                    <th style="padding: 12px; text-align: center;">L</th>
-                                    <th style="padding: 12px; text-align: center;">GD</th>
-                                    <th style="padding: 12px; text-align: center;">PTS</th>
-                                 </tr>
-                            </thead>
-                            <tbody>
-                                ${standingsList.map(([name, stats]) => `
-                                    <tr style="border-top: 1px solid #334155;">
-                                        <td style="padding: 10px;">${escapeHtml(name)}</td>
-                                        <td style="padding: 10px; text-align: center;">${stats.wins}</td>
-                                        <td style="padding: 10px; text-align: center;">${stats.draws}</td>
-                                        <td style="padding: 10px; text-align: center;">${stats.losses}</td>
-                                        <td style="padding: 10px; text-align: center;">${stats.gf - stats.ga}</td>
-                                        <td style="padding: 10px; text-align: center; color: #10b981; font-weight: bold;">${stats.pts}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-        }
-        
-        // CRUD Operations
-        window.addTeam = async function() {
-            const input = document.getElementById('newTeamName');
-            const name = input.value.trim();
-            if (!name) return;
-            
-            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
-            const snapshot = await arenaRef.once('value');
-            const arena = snapshot.val();
-            const teams = arena.teams || [];
-            
-            if (teams.some(t => t.name === name)) {
-                alert("Team already exists!");
-                return;
-            }
-            
-            teams.push({ id: generateId(), name: name });
-            await arenaRef.update({ teams: teams });
-            input.value = '';
-        };
-        
-        window.removeTeam = async function(teamId) {
-            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
-            const snapshot = await arenaRef.once('value');
-            const arena = snapshot.val();
-            const teams = (arena.teams || []).filter(t => t.id !== teamId);
-            await arenaRef.update({ teams: teams });
-        };
-        
-        window.updateScore = async function(matchIdx, side, value) {
-            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
-            const snapshot = await arenaRef.once('value');
-            const arena = snapshot.val();
-            const matches = [...(arena.matches || [])];
-            let num = value === '' ? null : Number(value);
-            if (isNaN(num)) num = null;
-            matches[matchIdx][side] = num;
-            await arenaRef.update({ matches: matches });
-        };
-        
-        window.generateFixtures = async function() {
-            const arenaRef = db.ref(`tournaments/${currentRoomId}`);
-            const snapshot = await arenaRef.once('value');
-            const arena = snapshot.val();
-            const teams = arena.teams || [];
-            
-            if (teams.length < 2) {
-                alert("Need at least 2 teams!");
-                return;
-            }
-            
-            const matches = [];
-            for (let i = 0; i < teams.length; i++) {
-                for (let j = i + 1; j < teams.length; j++) {
-                    matches.push({
-                        id: generateId(),
-                        t1: teams[i].name,
-                        t2: teams[j].name,
-                        s1: null,
-                        s2: null,
-                        stage: 'League'
-                    });
+                t.groupAssignments = groupAssignments;
+            } else {
+                for (let i = 0; i < teams.length; i++) {
+                    for (let j = i + 1; j < teams.length; j++) {
+                        for (let l = 0; l < legs; l++) {
+                            matches.push({
+                                id: crypto.randomUUID(),
+                                t1: teams[i].name, t2: teams[j].name,
+                                s1: null, s2: null, stage: 'League'
+                            });
+                        }
+                    }
                 }
             }
-            await arenaRef.update({ matches: matches });
-        };
-        
-        // CREATE TOURNAMENT - MAIN FU
+
+            t.matches = matches;
+            saveData();
+            renderTabsNav();
+            switchTab('teams');
+        }
+
+        // --- Standing Calculators ---
+        function calculateStats(teams, matches, filterGroup = null, groupAssignments = null) {
+            const s = {};
+            const relevantTeams = filterGroup 
+                ? teams.filter(t => groupAssignments?.[t.name] === filterGroup)
+                : teams;
+
+            relevantTeams.forEach(t => s[t.name] = { pts: 0, gd: 0, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
+            
+            matches.forEach(m => {
+                if (s[m.t1] && s[m.t2] && m.s1 !== null && m.s2 !== null) {
+                    s[m.t1].p++; s[m.t2].p++;
+                    s[m.t1].gf += m.s1; s[m.t1].ga += m.s2;
+                    s[m.t2].gf += m.s2; s[m.t2].ga += m.s1;
+                    s[m.t1].gd = s[m.t1].gf - s[m.t1].ga;
+                    s[m.t2].gd = s[m.t2].gf - s[m.t2].ga;
+                    if (m.s1 > m.s2) { s[m.t1].pts += 3; s[m.t1].w++; s[m.t2].l++; }
+                    else if (m.s2 > m.s1) { s[m.t2].pts += 3; s[m.t2].w++; s[m.t1].l++; }
+                    else { s[m.t1].pts += 1; s[m.t2].pts += 1; s[m.t1].d++; s[m.t2].d++; }
+                }
+            });
+            return Object.entries(s).sort((a, b) => b[1].pts - a[1].pts || b[1].gd - a[1].gd || b[1].gf - a[1].gf);
+        }
+
+        // --- Render UI Elements ---
+        function renderTournamentList() {
+            const list = document.getElementById('tournament-list');
+            list.innerHTML = tournaments.length ? '' : `
+                <div class="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
+                    <i data-lucide="shield-alert" class="w-8 h-8 text-slate-700 mx-auto mb-3"></i>
+                    <p class="text-slate-600 text-xs font-black uppercase tracking-widest">No Arenas Created</p>
+                </div>
+            `;
+
+            tournaments.slice().reverse().forEach(t => {
+                const isLocked = t.password && t.password.trim() !== '';
+                const card = document.createElement('div');
+                card.className = "group bg-slate-900/50 border border-slate-800/80 p-5 rounded-3xl flex justify-between items-center cursor-pointer hover:bg-slate-800 hover:border-emerald-500/30 transition-all active:scale-[0.98]";
+                card.onclick = () => attemptJoinDetail(t.id);
+                card.innerHTML = `
+                    <div class="flex gap-4 items-center">
+                        <div class="w-12 h-12 rounded-2xl flex items-center justify-center ${isLocked ? 'bg-amber-500/10' : 'bg-blue-500/10'} border border-slate-800">
+                            <i data-lucide="${isLocked ? 'lock' : 'users'}" class="w-5 h-5 ${isLocked ? 'text-amber-500' : 'text-blue-500'}"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-base group-hover:text-emerald-400 transition-colors">${t.name}</h4>
+                            <div class="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                <span class="text-emerald-500/70">${t.format}</span>
+                                <span>•</span>
+                                <span>${t.teams.length} Teams</span>
+                            </div>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-slate-700 group-hover:text-emerald-500 transition-colors"></i>
+                `;
+                list.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // Renders tabs dynamically (hiding 'groups' tab unless Group Stage is active and assigned)
+        function renderTabsNav() {
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            const isGroupedT = t.format.includes('Group');
+            const hasGroupsGenerated = t.groupAssignments && Object.keys(t.groupAssignments).length > 0;
+            const bar = document.getElementById('tab-bar');
+            
+            const tabs = ['teams'];
+            if (isGroupedT && hasGroupsGenerated) {
+                tabs.push('groups');
+            }
+            tabs.push('matches', 'standings');
+
+            bar.innerHTML = tabs.map(tab => {
+                const isActive = currentTab === tab;
+                const activeClasses = "text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/5";
+                const inactiveClasses = "text-slate-500";
+                return `
+                    <button onclick="switchTab('${tab}')" data-tab="${tab}" class="flex-1 min-w-[100px] py-5 text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? activeClasses : inactiveClasses}">
+                        ${tab}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderTabContent() {
+            const container = document.getElementById('tab-content');
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            const isGroupedT = t.format.includes('Group');
+            container.innerHTML = '';
+
+            if (currentTab === 'teams') {
+                const enrolledHtml = t.teams.map(team => `
+                    <div class="bg-slate-900/40 border border-slate-800/60 p-5 rounded-3xl flex justify-between items-center group">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-[10px] font-black text-emerald-500">
+                                ${team.name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <p class="font-bold text-base">${team.name}</p>
+                        </div>
+                        ${t.matches.length === 0 ? `<button onclick="removeTeam('${team.id}')" class="p-2 text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                    </div>
+                `).join('');
+
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        ${t.matches.length === 0 ? `
+                            <div class="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] space-y-5">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i data-lucide="plus" class="w-4 h-4 text-emerald-500"></i>
+                                    <h3 class="text-xs font-black uppercase text-slate-400">Enroll Team</h3>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-3">
+                                    <input id="team-input" placeholder="Enter team name..." class="flex-1 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-sm outline-none" onkeydown="if(event.key==='Enter') addTeam(this.value)" />
+                                    <button onclick="addTeam(document.getElementById('team-input').value)" class="bg-emerald-500 text-slate-950 px-8 py-4 rounded-2xl font-black text-[11px] uppercase transition-transform active:scale-95">Add Team</button>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${enrolledHtml || '<p class="col-span-full py-12 text-center text-slate-600 text-xs font-bold uppercase">No teams enrolled</p>'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (currentTab === 'groups' && isGroupedT && t.groupAssignments) {
+                const groupedMap = {};
+                t.teams.forEach(team => {
+                    const gId = t.groupAssignments[team.name] || 'Unassigned';
+                    if (!groupedMap[gId]) groupedMap[gId] = [];
+                    groupedMap[gId].push(team);
+                });
+
+                const cardsHtml = Object.entries(groupedMap).sort(([a], [b]) => a - b).map(([gId, gTeams]) => `
+                    <div class="bg-slate-900/30 border border-slate-800 p-6 rounded-[2.5rem]">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center border border-emerald-500/20">
+                                <i data-lucide="layers" class="w-4 h-4 text-emerald-500"></i>
+                            </div>
+                            <h3 class="text-sm font-black uppercase tracking-widest">Group ${gId}</h3>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            ${gTeams.map(gt => `
+                                <div class="bg-slate-950/50 p-4 rounded-2xl flex items-center gap-3 border border-slate-800/50">
+                                    <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                    <span class="font-bold text-sm">${gt.name}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+
+                container.innerHTML = `<div class="space-y-6">${cardsHtml}</div>`;
+            }
+
+            if (currentTab === 'matches') {
+                if (t.matches.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center space-y-4 py-8">
+                            <button onclick="generateStage()" class="w-full bg-emerald-500 text-slate-950 py-6 rounded-[2.5rem] font-black text-[12px] uppercase shadow-2xl shadow-emerald-500/20 active:scale-[0.98] transition-all">
+                                Initialize Brackets
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    const matchesHtml = t.matches.map((m, idx) => `
+                        <div class="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
+                            <div class="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <span>Match ${idx + 1}</span>
+                                <span class="text-emerald-500">${m.stage} ${m.grp ? `• GROUP ${m.grp}` : ''}</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="flex-1 text-center space-y-3">
+                                    <p class="text-xs font-black truncate">${m.t1}</p>
+                                    <input type="number" value="${m.s1 ?? ''}" oninput="setScore(${idx}, this.value, null)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors" />
+                                </div>
+                                <div class="text-slate-800 font-black text-[10px] pt-8">VS</div>
+                                <div class="flex-1 text-center space-y-3">
+                                    <p class="text-xs font-black truncate">${m.t2}</p>
+                                    <input type="number" value="${m.s2 ?? ''}" oninput="setScore(${idx}, null, this.value)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors" />
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                    container.innerHTML = `<div class="grid gap-4">${matchesHtml}</div>`;
+                }
+            }
+
+            if (currentTab === 'standings') {
+                if (t.matches.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-12 text-center text-slate-600">
+                            <p class="text-[10px] font-black uppercase tracking-widest">Standings will populate after bracket generation.</p>
+                        </div>
+                    `;
+                } else {
+                    const groupIds = t.groupAssignments ? Array.from(new Set(Object.values(t.groupAssignments))).sort((a,b)=>a-b) : [null];
+                    
+                    container.innerHTML = groupIds.map(gid => {
+                        const stats = calculateStats(t.teams, t.matches, gid, t.groupAssignments);
+                        return `
+                            <div class="mb-10 animate-slide-up">
+                                ${gid ? `<h3 class="text-xs font-black uppercase text-emerald-500 tracking-widest mb-4 ml-4">Group ${gid}</h3>` : ''}
+                                <div class="bg-slate-900 border border-slate-800 p-5 rounded-[2.5rem] shadow-xl overflow-x-auto no-scrollbar">
+                                    <table class="w-full text-left min-w-[450px]">
+                                        <thead>
+                                            <tr class="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase border-b border-slate-800">
+                                                <th class="pb-4">Team</th>
+                                                <th class="pb-4 text-center">P</th>
+                                                <th class="pb-4 text-center">W</th>
+                                                <th class="pb-4 text-center">D</th>
+                                                <th class="pb-4 text-center">L</th>
+                                                <th class="pb-4 text-center">GD</th>
+                                                <th class="pb-4 text-center">PTS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="text-xs font-bold">
+                                            ${stats.map(([name, s]) => `
+                                                <tr class="border-b border-slate-800/30 hover:bg-white/5 transition-colors">
+                                                    <td class="py-4">${name}</td>
+                                                    <td class="py-4 text-center text-slate-500">${s.p}</td>
+                                                    <td class="py-4 text-center text-slate-500">${s.w}</td>
+                                                    <td class="py-4 text-center text-slate-500">${s.d}</td>
+                                                    <td class="py-4 text-center text-slate-500">${s.l}</td>
+                                                    <td class="py-4 text-center text-slate-500">${s.gd}</td>
+                                                    <td class="py-4 text-center text-emerald-400 font-black text-sm">${s.pts}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
