@@ -6,6 +6,48 @@
     <title>eWAR | Tournament Arena</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Firebase Core and Realtime Database Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // ==========================================
+        // REPLACE THIS WITH YOUR FIREBASE CONFIG
+        // ==========================================
+       // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
+  authDomain: "ewar-fa1db.firebaseapp.com",
+  databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com",
+  projectId: "ewar-fa1db",
+  storageBucket: "ewar-fa1db.firebasestorage.app",
+  messagingSenderId: "287555570705",
+  appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
+  measurementId: "G-3P3RYNZXL0"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        // Expose database references globally for our standard UI script script below
+        window.firebaseDb = db;
+        window.dbRef = ref(db, 'tournaments');
+        window.writeDatabase = (data) => set(ref(db, 'tournaments'), data);
+    </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -49,8 +91,8 @@
         </div>
         <div class="flex items-center gap-4">
             <div id="sync-indicator" class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1.5 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-full">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Enter the Arena. Leave as Legend
+                <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="sync-text">Connecting to Live Server...</span>
             </div>
         </div>
     </nav>
@@ -60,7 +102,7 @@
         <section class="relative overflow-hidden bg-slate-900 rounded-[2rem] p-7 sm:p-8 border border-slate-800 shadow-2xl">
             <div class="relative z-10">
                 <h2 class="text-3xl font-black mb-2 tracking-tight">Create <span class="text-emerald-400">Arenas.</span></h2>
-                <p class="text-slate-400 text-sm max-w-[280px] leading-relaxed">Manage tournaments, track scores, and view standings.</p>
+                <p class="text-slate-400 text-sm max-w-[280px] leading-relaxed">Manage tournaments, track scores, and view standings live.</p>
             </div>
             <div class="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-20 -mt-20"></div>
         </section>
@@ -68,7 +110,7 @@
         <div class="space-y-4">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
-                    <i data-lucide="layout-dashboard" class="w-3 h-3"></i> Active Rooms
+                    <i data-lucide="layout-dashboard" class="w-3 h-3"></i> Active Live Rooms
                 </h3>
             </div>
             <div id="tournament-list" class="grid gap-3"></div>
@@ -159,14 +201,14 @@
     </div>
 
     <script>
-        // ---------- DATA ----------
+        // ---------- DATA SYSTEM ----------
         let tournaments = [];
         let activeTournamentId = null;
         let targetedLockedId = null;
         let currentTab = 'teams';
         let isReadOnlyMode = false;
 
-        // Helper Functions
+        // Utilities
         function generateUUID() {
             return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
         }
@@ -180,25 +222,54 @@
             if (window.lucide) setTimeout(() => window.lucide.createIcons(), 10);
         }
 
-        // ---------- DATA PERSISTENCE (Local Storage) ----------
-        function saveData() {
-            localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
-            renderTournamentList();
-            if (activeTournamentId) renderTabContent();
-        }
-
-        // Dynamic Loading Function
-        function loadData() {
-            const stored = localStorage.getItem('ewar_tournaments');
-            if (stored) {
-                tournaments = JSON.parse(stored);
-            } else {
-                tournaments = [];
+        // ---------- REALTIME SYNC HANDLERS ----------
+        function syncWithFirebase() {
+            if (!window.dbRef) {
+                // Retry in case module timing window is delayed slightly
+                setTimeout(syncWithFirebase, 100);
+                return;
             }
-            renderTournamentList();
+
+            // Bind real-time data streaming updates from server
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then((mod) => {
+                mod.onValue(window.dbRef, (snapshot) => {
+                    const data = snapshot.val();
+                    tournaments = data ? Object.values(data) : [];
+                    
+                    // Update status layout info
+                    const dot = document.getElementById('sync-dot');
+                    const label = document.getElementById('sync-text');
+                    if(dot && label) {
+                        dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+                        label.innerText = "Live Synchronized Grid Connected";
+                    }
+
+                    // Trigger non-breaking dynamic component redraw updates across interfaces
+                    renderTournamentList();
+                    if (activeTournamentId) {
+                        // Refresh state variable pointers inside viewing window bounds safely
+                        const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
+                        if (!currentActiveT) {
+                            showDashboard();
+                        } else {
+                            renderTabsNav();
+                            renderTabContent();
+                        }
+                    }
+                });
+            });
         }
 
-        // ---------- TOURNAMENT LOGIC ----------
+        function pushUpdateData() {
+            if (window.writeDatabase) {
+                // Convert arrays directly to object structures seamlessly for firebase nodes matching schema keys
+                const syncData = {};
+                tournaments.forEach(t => { syncData[t.id] = t; });
+                window.writeDatabase(syncData);
+            }
+        }
+
+        // ---------- TOURNAMENT BRACKET GENERATOR ----------
         function generateStage() {
             if (isReadOnlyMode) return;
             const t = tournaments.find(x => x.id === activeTournamentId);
@@ -242,8 +313,8 @@
                                     id: generateUUID(),
                                     t1: group[i].name, 
                                     t2: group[j].name,
-                                    s1: null, 
-                                    s2: null, 
+                                    s1: "", 
+                                    s2: "", 
                                     stage: 'Group Stage', 
                                     grp: groupIdx
                                 });
@@ -260,8 +331,8 @@
                                 id: generateUUID(),
                                 t1: teams[i].name, 
                                 t2: teams[j].name,
-                                s1: null, 
-                                s2: null, 
+                                s1: "", 
+                                s2: "", 
                                 stage: 'League'
                             });
                         }
@@ -270,9 +341,7 @@
             }
 
             t.matches = matches;
-            saveData();
-            renderTabsNav();
-            renderTabContent();
+            pushUpdateData();
             switchTab('matches');
         }
 
@@ -287,7 +356,7 @@
             });
             
             (matches || []).forEach(m => {
-                if (statsMap[m.t1] && statsMap[m.t2] && m.s1 !== null && m.s2 !== null) {
+                if (statsMap[m.t1] && statsMap[m.t2] && m.s1 !== "" && m.s2 !== "" && m.s1 !== null && m.s2 !== null) {
                     const s1 = Number(m.s1), s2 = Number(m.s2);
                     statsMap[m.t1].p++; statsMap[m.t2].p++;
                     statsMap[m.t1].gf += s1; statsMap[m.t1].ga += s2;
@@ -316,26 +385,25 @@
             });
         }
 
-        // ---------- RENDER FUNCTIONS ----------
+        // ---------- VIEWS PRESENTATION ENGINE ----------
         function renderTournamentList() {
             const list = document.getElementById('tournament-list');
             if (!list) return;
-            
             list.innerHTML = '';
             
-            if (!tournaments || tournaments.length === 0) {
+            if (tournaments.length === 0) {
                 list.innerHTML = `
                     <div class="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
                         <i data-lucide="shield-alert" class="w-8 h-8 text-slate-700 mx-auto mb-3"></i>
-                        <p class="text-slate-600 text-xs font-black uppercase tracking-widest">No Arenas Created</p>
-                        <p class="text-slate-700 text-[10px] mt-2">Click the + button to create one</p>
+                        <p class="text-slate-600 text-xs font-black uppercase tracking-widest">No Arenas Online</p>
+                        <p class="text-slate-700 text-[10px] mt-2">Click the + button to launch your room connection</p>
                     </div>
                 `;
                 refreshIcons();
                 return;
             }
 
-            tournaments.slice().reverse().forEach(t => {
+            tournaments.forEach(t => {
                 const isLocked = t.password && t.password.trim() !== '';
                 const card = document.createElement('div');
                 card.className = "group bg-slate-900/50 border border-slate-800/80 p-5 rounded-3xl flex justify-between items-center hover:border-slate-700 transition-all";
@@ -350,7 +418,7 @@
                             <div class="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                                 <span class="text-emerald-500/70">${escapeHtml(t.format)}</span>
                                 <span>•</span>
-                                <span>${(t.teams || []).length} Teams</span>
+                                <span>${t.teams ? Object.keys(t.teams).length : 0} Teams</span>
                             </div>
                         </div>
                     </div>
@@ -405,7 +473,8 @@
             container.innerHTML = '';
 
             if (currentTab === 'teams') {
-                const enrolledHtml = (t.teams || []).map(team => `
+                const teamsArr = t.teams ? Object.values(t.teams) : [];
+                const enrolledHtml = teamsArr.map(team => `
                     <div class="bg-slate-900/40 border border-slate-800/60 p-5 rounded-3xl flex justify-between items-center group">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-[10px] font-black text-emerald-500">
@@ -413,13 +482,13 @@
                             </div>
                             <p class="font-bold text-base">${escapeHtml(team.name)}</p>
                         </div>
-                        ${((t.matches || []).length === 0 && !isReadOnlyMode) ? `<button onclick="removeTeam('${team.id}')" class="p-2 text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                        ${((!t.matches || t.matches.length === 0) && !isReadOnlyMode) ? `<button onclick="removeTeam('${team.id}')" class="p-2 text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
                     </div>
                 `).join('');
 
                 container.innerHTML = `
                     <div class="space-y-6">
-                        ${((t.matches || []).length === 0 && !isReadOnlyMode) ? `
+                        ${((!t.matches || t.matches.length === 0) && !isReadOnlyMode) ? `
                             <div class="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] space-y-5">
                                 <div class="flex items-center gap-2 mb-2">
                                     <i data-lucide="plus" class="w-4 h-4 text-emerald-500"></i>
@@ -444,25 +513,20 @@
                         if (teamInput.value.trim()) addTeam(teamInput.value.trim());
                         teamInput.value = '';
                     };
-                    teamInput.onkeypress = (e) => {
-                        if (e.key === 'Enter' && teamInput.value.trim()) {
-                            addTeam(teamInput.value.trim());
-                            teamInput.value = '';
-                        }
-                    };
                 }
             }
 
             if (currentTab === 'groups' && isGroupedT && t.groupAssignments) {
                 const groupedMap = {};
-                (t.teams || []).forEach(team => {
+                const teamsArr = t.teams ? Object.values(t.teams) : [];
+                teamsArr.forEach(team => {
                     const gId = t.groupAssignments[team.name] || 'Unassigned';
                     if (!groupedMap[gId]) groupedMap[gId] = [];
                     groupedMap[gId].push(team);
                 });
 
                 container.innerHTML = Object.entries(groupedMap).sort(([a], [b]) => String(a).localeCompare(String(b))).map(([gId, gTeams]) => `
-                    <div class="bg-slate-900/30 border border-slate-800 p-6 rounded-[2.5rem]">
+                    <div class="bg-slate-900/30 border border-slate-800 p-6 rounded-[2.5rem] mb-4">
                         <div class="flex items-center gap-3 mb-6">
                             <div class="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center border border-emerald-500/20">
                                 <i data-lucide="layers" class="w-4 h-4 text-emerald-500"></i>
@@ -482,7 +546,8 @@
             }
 
             if (currentTab === 'matches') {
-                if ((t.matches || []).length === 0) {
+                const matchesArr = t.matches ? Object.values(t.matches) : [];
+                if (matchesArr.length === 0) {
                     container.innerHTML = `
                         <div class="text-center space-y-4 py-8">
                             ${!isReadOnlyMode ? `
@@ -495,7 +560,7 @@
                         </div>
                     `;
                 } else {
-                    container.innerHTML = `<div class="grid gap-4">${(t.matches || []).map((m, idx) => `
+                    container.innerHTML = `<div class="grid gap-4">${matchesArr.map((m, idx) => `
                         <div class="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
                             <div class="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 <span>Match ${idx + 1}</span>
@@ -504,33 +569,34 @@
                             <div class="flex items-center justify-between gap-4">
                                 <div class="flex-1 text-center space-y-3">
                                     <p class="text-xs font-black truncate">${escapeHtml(m.t1)}</p>
-                                    <input type="number" placeholder="-" value="${m.s1 !== null && m.s1 !== undefined ? m.s1 : ''}" data-match-idx="${idx}" data-team="1" ${isReadOnlyMode ? 'disabled' : ''} class="match-score-input w-full bg-slate-950 border border-slate-800 disabled:opacity-60 disabled:cursor-not-allowed p-3 rounded-2xl text-center font-black text-xl outline-none transition-all" />
+                                    <input type="number" placeholder="-" value="${m.s1 !== undefined ? m.s1 : ''}" data-match-id="${m.id}" data-team="1" ${isReadOnlyMode ? 'disabled' : ''} class="match-score-input w-full bg-slate-950 border border-slate-800 disabled:opacity-60 disabled:cursor-not-allowed p-3 rounded-2xl text-center font-black text-xl outline-none transition-all" />
                                 </div>
                                 <div class="text-slate-800 font-black text-[10px] pt-8">VS</div>
                                 <div class="flex-1 text-center space-y-3">
                                     <p class="text-xs font-black truncate">${escapeHtml(m.t2)}</p>
-                                    <input type="number" placeholder="-" value="${m.s2 !== null && m.s2 !== undefined ? m.s2 : ''}" data-match-idx="${idx}" data-team="2" ${isReadOnlyMode ? 'disabled' : ''} class="match-score-input w-full bg-slate-950 border border-slate-800 disabled:opacity-60 disabled:cursor-not-allowed p-3 rounded-2xl text-center font-black text-xl outline-none transition-all" />
+                                    <input type="number" placeholder="-" value="${m.s2 !== undefined ? m.s2 : ''}" data-match-id="${m.id}" data-team="2" ${isReadOnlyMode ? 'disabled' : ''} class="match-score-input w-full bg-slate-950 border border-slate-800 disabled:opacity-60 disabled:cursor-not-allowed p-3 rounded-2xl text-center font-black text-xl outline-none transition-all" />
                                 </div>
                             </div>
                         </div>
                     `).join('')}</div>`;
                     
-                    setTimeout(() => {
-                        document.querySelectorAll('.match-score-input').forEach(input => {
-                            input.addEventListener('input', handleScoreChange);
-                        });
-                    }, 10);
+                    document.querySelectorAll('.match-score-input').forEach(input => {
+                        input.addEventListener('input', handleScoreChange);
+                    });
                 }
             }
             
             if (currentTab === 'standings') {
-                if ((t.matches || []).length === 0) {
+                const matchesArr = t.matches ? Object.values(t.matches) : [];
+                const teamsArr = t.teams ? Object.values(t.teams) : [];
+
+                if (matchesArr.length === 0) {
                     container.innerHTML = `<div class="py-12 text-center text-slate-600"><p class="text-[10px] font-black uppercase">Standings will appear after bracket generation.</p></div>`;
                 } else {
                     const groupIds = t.groupAssignments ? Array.from(new Set(Object.values(t.groupAssignments))).sort((a,b)=>String(a).localeCompare(String(b))) : [null];
                     
                     container.innerHTML = groupIds.map(gid => {
-                        const stats = calculateStats(t.teams || [], t.matches || [], gid, t.groupAssignments);
+                        const stats = calculateStats(teamsArr, matchesArr, gid, t.groupAssignments);
                         return `
                             <div class="mb-10">
                                 ${gid ? `<h3 class="text-xs font-black uppercase text-emerald-500 tracking-widest mb-4 ml-4">Group ${gid}</h3>` : ''}
@@ -561,20 +627,25 @@
 
         function handleScoreChange(e) {
             const input = e.target;
-            const matchIdx = parseInt(input.getAttribute('data-match-idx'));
-            const team = input.getAttribute('data-team');
-            const value = input.value === '' ? null : parseInt(input.value);
+            const matchId = input.getAttribute('data-match-id');
+            const teamNum = input.getAttribute('data-team');
+            const val = input.value === '' ? "" : parseInt(input.value);
             
             const t = tournaments.find(x => x.id === activeTournamentId);
-            if (!t || !t.matches || !t.matches[matchIdx]) return;
+            if (!t || !t.matches) return;
             
-            if (team === '1') t.matches[matchIdx].s1 = value;
-            else t.matches[matchIdx].s2 = value;
+            // Find within array or indexed object variants cleanly
+            const match = Object.values(t.matches).find(m => m.id === matchId);
+            if (!match) return;
 
-            localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
+            if (teamNum === '1') match.s1 = val;
+            else match.s2 = val;
+
+            // Push individual updates out to database without breaking standard active focus
+            pushUpdateData();
         }
 
-        // ---------- NAVIGATION & ACTION HANDLERS ----------
+        // ---------- NAVIGATION & ACCESS GATEWAYS ----------
         function switchTab(tab) {
             currentTab = tab;
             renderTabsNav();
@@ -647,23 +718,26 @@
             if (isReadOnlyMode) return;
             const t = tournaments.find(x => x.id === activeTournamentId);
             if (!t) return;
-            if (!t.teams) t.teams = [];
+            if (!t.teams) t.teams = {};
             
-            t.teams.push({ id: generateUUID(), name: name });
-            saveData();
+            const newId = generateUUID();
+            // Object map assignment ensures seamless real-time patching without indices tracking confusion
+            t.teams[newId] = { id: newId, name: name };
+            pushUpdateData();
         }
 
         function removeTeam(teamId) {
             if (isReadOnlyMode) return;
             const t = tournaments.find(x => x.id === activeTournamentId);
-            if (!t) return;
-            t.teams = (t.teams || []).filter(team => team.id !== teamId);
-            saveData();
+            if (!t || !t.teams) return;
+            
+            delete t.teams[teamId];
+            pushUpdateData();
         }
 
-        // ---------- EVENT LISTENERS INITIALIZATION ----------
+        // ---------- INITIALIZATION CORE ----------
         document.addEventListener('DOMContentLoaded', () => {
-            loadData();
+            syncWithFirebase();
 
             document.getElementById('dashboard-link').onclick = showDashboard;
             document.getElementById('back-to-dashboard').onclick = showDashboard;
@@ -682,22 +756,23 @@
                 const pinInput = document.getElementById('arena-pin');
 
                 if (!nameInput.value.trim()) {
-                    alert('Please provide a room label name.');
+                    alert('Please provide an Arena label name.');
                     return;
                 }
 
+                const id = generateUUID();
                 const newRoom = {
-                    id: generateUUID(),
+                    id: id,
                     name: nameInput.value.trim(),
                     format: formatInput.value,
                     password: pinInput.value,
-                    teams: [],
-                    matches: [],
+                    teams: {},
+                    matches: {},
                     groupAssignments: {}
                 };
 
                 tournaments.push(newRoom);
-                saveData();
+                pushUpdateData();
                 
                 nameInput.value = '';
                 pinInput.value = '';
@@ -717,28 +792,24 @@
                     targetedLockedId = null;
                     launchRoomView(t);
                 } else {
-                    alert('Invalid PIN code protection key.');
+                    alert('Invalid PIN protection key verification access.');
                 }
             };
 
             document.getElementById('reset-tournament-btn').onclick = () => {
                 if (isReadOnlyMode) return;
-                if (confirm('Are you absolutely sure you want to clear out all parameters, registered groups, and score history data?')) {
+                if (confirm('Are you absolutely sure you want to completely clear out all matches and score history data?')) {
                     const t = tournaments.find(x => x.id === activeTournamentId);
                     if (t) {
-                        t.matches = [];
+                        t.matches = {};
                         t.groupAssignments = {};
-                        saveData();
-                        renderTabsNav();
-                        renderTabContent();
+                        pushUpdateData();
                     }
                 }
             };
 
-            // Room Deletion Subsystem
             document.getElementById('delete-arena-btn').onclick = () => {
                 if (isReadOnlyMode) return;
-                
                 const t = tournaments.find(x => x.id === activeTournamentId);
                 if (!t) return;
 
@@ -754,9 +825,12 @@
                     }
                 }
 
-                tournaments = tournaments.filter(x => x.id !== activeTournamentId);
-                saveData();
-                showDashboard();
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then((mod) => {
+                    const specificNode = mod.ref(window.firebaseDb, `tournaments/${activeTournamentId}`);
+                    mod.set(specificNode, null).then(() => {
+                        showDashboard();
+                    });
+                });
             };
         });
     </script>
