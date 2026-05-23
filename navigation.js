@@ -1,24 +1,47 @@
-import { tournaments, activeTournamentId, currentTab, targetedLockedId, setActiveTournamentId, setTargetedLockedId, setCurrentTab } from './firebase-init.js';
+import { tournaments, activeTournamentId, targetedLockedId, setActiveTournamentId, setTargetedLockedId, setCurrentTab } from './firebase-init.js';
 import { renderTabsNav, renderTabContent, renderTournamentList } from './render.js';
 
-// Navigation Functions
 export function showDashboard() {
-    document.getElementById('dashboard-view').classList.remove('hidden');
-    document.getElementById('detail-view').classList.add('hidden');
-    document.getElementById('fab').classList.remove('hidden');
+    const dashboardView = document.getElementById('dashboard-view');
+    const detailView = document.getElementById('detail-view');
+    const fab = document.getElementById('fab');
+    const dashboardPanel = document.getElementById('dashboard-panel');
+    
+    // Always show the appropriate dashboard based on login state
+    const isLoggedIn = dashboardPanel && !dashboardPanel.classList.contains('hidden');
+    
+    if (isLoggedIn) {
+        if (dashboardPanel) dashboardPanel.classList.remove('hidden');
+        if (dashboardView) dashboardView.classList.add('hidden');
+    } else {
+        if (dashboardView) dashboardView.classList.remove('hidden');
+        if (dashboardPanel) dashboardPanel.classList.add('hidden');
+    }
+    
+    if (detailView) detailView.classList.add('hidden');
+    if (fab) fab.classList.remove('hidden');
+    
     setActiveTournamentId(null);
     renderTournamentList();
 }
 
 export function showDetail(tournamentId) {
-    document.getElementById('dashboard-view').classList.add('hidden');
-    document.getElementById('detail-view').classList.remove('hidden');
-    document.getElementById('fab').classList.add('hidden');
+    const dashboardView = document.getElementById('dashboard-view');
+    const detailView = document.getElementById('detail-view');
+    const fab = document.getElementById('fab');
+    const dashboardPanel = document.getElementById('dashboard-panel');
+    
+    if (dashboardView) dashboardView.classList.add('hidden');
+    if (dashboardPanel) dashboardPanel.classList.add('hidden');
+    if (detailView) detailView.classList.remove('hidden');
+    if (fab) fab.classList.add('hidden');
     
     const tournament = tournaments.find(t => t.id === tournamentId);
     if (tournament) {
-        document.getElementById('active-title').innerHTML = tournament.name;
-        document.getElementById('active-format').innerHTML = tournament.format;
+        const titleEl = document.getElementById('active-title');
+        const formatEl = document.getElementById('active-format');
+        if (titleEl) titleEl.innerHTML = tournament.name;
+        if (formatEl) formatEl.innerHTML = tournament.format;
     }
     
     renderTabsNav();
@@ -40,18 +63,17 @@ export function attemptJoinDetail(tournamentId) {
 
 export function unlockRoom() {
     const pinInput = document.getElementById('entered-pin');
-    const enteredPin = pinInput ? pinInput.value : '';
+    const enteredPin = pinInput?.value || '';
     const tournament = tournaments.find(t => t.id === targetedLockedId);
     
     if (tournament && tournament.password === enteredPin) {
         setActiveTournamentId(targetedLockedId);
         toggleModal('pin-modal', false);
         showDetail(targetedLockedId);
-    } else {
+    } else if (tournament) {
         alert('Invalid PIN code. Access denied.');
     }
     
-    // Clear input regardless of execution status (moved out of conditional)
     if (pinInput) pinInput.value = '';
     setTargetedLockedId(null);
 }
@@ -65,10 +87,7 @@ export function switchTab(tab) {
 export function toggleModal(modalId, show) {
     const modal = document.getElementById(modalId);
     if (modal) {
-        if (show) {
-            modal.classList.remove('hidden');
-        } else {
-            modal.classList.add('hidden');
-        }
+        if (show) modal.classList.remove('hidden');
+        else modal.classList.add('hidden');
     }
 }
