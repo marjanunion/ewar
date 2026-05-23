@@ -5,6 +5,14 @@ import { renderTournamentList, renderTabContent } from './render.js';
 // --- Unified Sync Operations ---
 export function saveData() {
     sanitizeData();
+    
+    // Show saving indicator
+    const indicator = document.getElementById('sync-indicator');
+    if (indicator) {
+        indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-spin"></span> Saving...`;
+        indicator.classList.remove('opacity-40');
+    }
+
     if (isFirebaseInitialized) {
         // Convert to object for Firebase to avoid array index gaps
         const tournamentsObj = {};
@@ -15,11 +23,20 @@ export function saveData() {
         });
         set(dbRef, tournamentsObj)
         .then(() => {
+            // Restore clean idle state upon successful database return
+            if (indicator) {
+                indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Live Syncing`;
+                indicator.classList.add('opacity-40');
+            }
             // Hide any rules-warning visual since database write succeeded
             const warningBox = document.getElementById('rules-warning-box');
             if (warningBox) warningBox.classList.add('hidden');
         })
         .catch(err => {
+            if (indicator) {
+                indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Sync Failed`;
+                indicator.classList.remove('opacity-40');
+            }
             console.error("Firebase write failed: ", err);
             // Show friendly diagnostic rules block on permission denial error
             if (err.message && err.message.includes("PERMISSION_DENIED")) {
@@ -38,6 +55,11 @@ export function saveData() {
             renderTournamentList();
         } else {
             renderTabContent();
+        }
+        // Reset indicator for localStorage mode
+        if (indicator) {
+            indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Local Only`;
+            indicator.classList.remove('opacity-40');
         }
     }
 }
@@ -98,20 +120,26 @@ export function removeTeam(teamId) {
     saveData();
 }
 
-// Updated function to correctly cast variables to numbers and prevent DB serialization bugs
 export function setScore(matchIdx, s1, s2) {
     const t = tournaments.find(x => x.id === activeTournamentId);
     if (!t) return;
     if (!t.matches) t.matches = [];
     
-    // Validate match index exists
     if (matchIdx >= t.matches.length) {
         console.error("Match index out of bounds:", matchIdx);
         return;
     }
     
-    if (s1 !== null && s1 !== undefined && s1 !== '') t.matches[matchIdx].s1 = Number(s1);
-    if (s2 !== null && s2 !== undefined && s2 !== '') t.matches[matchIdx].s2 = Number(s2);
+    const match = t.matches[matchIdx];
+
+    // Safely transform completely cleared input text fields into null
+    if (s1 !== null && s1 !== undefined) {
+        match.s1 = (s1 === '') ? null : Number(s1);
+    }
+    if (s2 !== null && s2 !== undefined) {
+        match.s2 = (s2 === '') ? null : Number(s2);
+    }
+    
     saveData();
 }
 
@@ -126,11 +154,11 @@ export function resetCurrentTournament() {
     }
 }
 
-// Modified locally to trigger clear both offline & online
 export function clearAllData() {
-    if (confirm("Erase all local/cloud data in this room?")) {
-        tournaments.length = 0; // Clear array without reassigning
+    if (confirm("⚠️ DESTRUCTIVE ACTION: This will delete ALL tournaments and data. This cannot be undone. Continue?")) {
+        tournaments.length = 0;
         saveData();
         if (window.showDashboard) window.showDashboard();
+        renderTournamentList();
     }
 }

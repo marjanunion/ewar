@@ -49,11 +49,7 @@ function setupEventListeners() {
         resetBtn.addEventListener('click', () => resetCurrentTournament());
     }
     
-    // Clear all data button
-    const clearAllBtn = document.getElementById('clear-all-btn');
-    if (clearAllBtn) {
-        clearAllBtn.addEventListener('click', () => clearAllData());
-    }
+   
     
     // FAB button
     const fab = document.getElementById('fab');

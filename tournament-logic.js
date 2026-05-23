@@ -62,6 +62,9 @@ export function generateStage() {
     saveData();
     if (window.renderTabsNav) window.renderTabsNav();
     switchTab('teams');
+
+    // Redirect to matches immediately
+    switchTab('matches');
 }
 
 // --- Standing Calculators (FIXED) ---

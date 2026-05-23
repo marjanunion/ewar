@@ -9,12 +9,19 @@ export function renderTournamentList() {
     const list = document.getElementById('tournament-list');
     if (!list) return;
     
-    list.innerHTML = tournaments.length ? '' : `
-        <div class="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
-            <i data-lucide="shield-alert" class="w-8 h-8 text-slate-700 mx-auto mb-3"></i>
-            <p class="text-slate-600 text-xs font-black uppercase tracking-widest">No Arenas Created</p>
-        </div>
-    `;
+    // Clear out stale child element nodes before rendering updates
+    list.innerHTML = '';
+    
+    if (tournaments.length === 0) {
+        list.innerHTML = `
+            <div class="py-20 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
+                <i data-lucide="shield-alert" class="w-8 h-8 text-slate-700 mx-auto mb-3"></i>
+                <p class="text-slate-600 text-xs font-black uppercase tracking-widest">No Arenas Created</p>
+            </div>
+        `;
+        if (lucide) lucide.createIcons();
+        return;
+    }
 
     tournaments.slice().reverse().forEach(t => {
         const isLocked = t.password && t.password.trim() !== '';
@@ -181,12 +188,12 @@ export function renderTabContent() {
                     <div class="flex items-center justify-between gap-4">
                         <div class="flex-1 text-center space-y-3">
                             <p class="text-xs font-black truncate">${escapeHtml(m.t1)}</p>
-                            <input type="number" value="${m.s1 ?? ''}" oninput="window.setScore(${idx}, this.value, null)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors" />
+                            <input type="number" placeholder="-" value="${m.s1 ?? ''}" onchange="window.setScore(${idx}, this.value, null)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
                         </div>
                         <div class="text-slate-800 font-black text-[10px] pt-8">VS</div>
                         <div class="flex-1 text-center space-y-3">
                             <p class="text-xs font-black truncate">${escapeHtml(m.t2)}</p>
-                            <input type="number" value="${m.s2 ?? ''}" oninput="window.setScore(${idx}, null, this.value)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors" />
+                            <input type="number" placeholder="-" value="${m.s2 ?? ''}" onchange="window.setScore(${idx}, null, this.value)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
                         </div>
                     </div>
                 </div>
@@ -194,7 +201,7 @@ export function renderTabContent() {
             container.innerHTML = `<div class="grid gap-4">${matchesHtml}</div>`;
         }
     }
-
+    
     if (currentTab === 'standings') {
         if ((t.matches || []).length === 0) {
             container.innerHTML = `
@@ -221,7 +228,7 @@ export function renderTabContent() {
                                         <th class="pb-4 text-center">L</th>
                                         <th class="pb-4 text-center">GD</th>
                                         <th class="pb-4 text-center">PTS</th>
-                                    </tr>
+                                    </table>
                                 </thead>
                                 <tbody class="text-xs font-bold">
                                     ${stats.map(([name, s]) => `

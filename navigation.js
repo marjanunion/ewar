@@ -47,10 +47,12 @@ export function unlockRoom() {
         setActiveTournamentId(targetedLockedId);
         toggleModal('pin-modal', false);
         showDetail(targetedLockedId);
-        if (pinInput) pinInput.value = '';
     } else {
         alert('Invalid PIN code. Access denied.');
     }
+    
+    // Clear input regardless of execution status (moved out of conditional)
+    if (pinInput) pinInput.value = '';
     setTargetedLockedId(null);
 }
 
