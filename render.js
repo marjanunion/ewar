@@ -169,38 +169,40 @@ export function renderTabContent() {
         container.innerHTML = `<div class="space-y-6">${cardsHtml}</div>`;
     }
 
-    if (currentTab === 'matches') {
-        if ((t.matches || []).length === 0) {
-            container.innerHTML = `
-                <div class="text-center space-y-4 py-8">
-                    <button onclick="window.generateStage()" class="w-full bg-emerald-500 text-slate-950 py-6 rounded-[2.5rem] font-black text-[12px] uppercase shadow-2xl shadow-emerald-500/20 active:scale-[0.98] transition-all">
-                        Initialize Brackets
-                    </button>
+    // Inside render.js, find the 'matches' tab section and replace with this:
+
+if (currentTab === 'matches') {
+    if ((t.matches || []).length === 0) {
+        container.innerHTML = `
+            <div class="text-center space-y-4 py-8">
+                <button onclick="window.generateStage()" class="w-full bg-emerald-500 text-slate-950 py-6 rounded-[2.5rem] font-black text-[12px] uppercase shadow-2xl shadow-emerald-500/20 active:scale-[0.98] transition-all">
+                    Initialize Brackets
+                </button>
+            </div>
+        `;
+    } else {
+        const matchesHtml = (t.matches || []).map((m, idx) => `
+            <div class="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
+                <div class="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <span>Match ${idx + 1}</span>
+                    <span class="text-emerald-500">${m.stage} ${m.grp ? `• GROUP ${m.grp}` : ''}</span>
                 </div>
-            `;
-        } else {
-            const matchesHtml = (t.matches || []).map((m, idx) => `
-                <div class="bg-slate-900 border border-slate-800/50 p-6 sm:p-8 rounded-[2.5rem]">
-                    <div class="flex justify-between items-center mb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        <span>Match ${idx + 1}</span>
-                        <span class="text-emerald-500">${m.stage} ${m.grp ? `• GROUP ${m.grp}` : ''}</span>
+                <div class="flex items-center justify-between gap-4">
+                    <div class="flex-1 text-center space-y-3">
+                        <p class="text-xs font-black truncate">${escapeHtml(m.t1)}</p>
+                        <input type="number" placeholder="-" value="${m.s1 ?? ''}" onchange="window.setScore(${idx}, this.value, null)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
                     </div>
-                    <div class="flex items-center justify-between gap-4">
-                        <div class="flex-1 text-center space-y-3">
-                            <p class="text-xs font-black truncate">${escapeHtml(m.t1)}</p>
-                            <input type="number" placeholder="-" value="${m.s1 ?? ''}" onchange="window.setScore(${idx}, this.value, null)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
-                        </div>
-                        <div class="text-slate-800 font-black text-[10px] pt-8">VS</div>
-                        <div class="flex-1 text-center space-y-3">
-                            <p class="text-xs font-black truncate">${escapeHtml(m.t2)}</p>
-                            <input type="number" placeholder="-" value="${m.s2 ?? ''}" onchange="window.setScore(${idx}, null, this.value)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
-                        </div>
+                    <div class="text-slate-800 font-black text-[10px] pt-8">VS</div>
+                    <div class="flex-1 text-center space-y-3">
+                        <p class="text-xs font-black truncate">${escapeHtml(m.t2)}</p>
+                        <input type="number" placeholder="-" value="${m.s2 ?? ''}" onchange="window.setScore(${idx}, null, this.value)" class="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center font-black text-xl outline-none transition-colors focus:border-emerald-500/50" />
                     </div>
                 </div>
-            `).join('');
-            container.innerHTML = `<div class="grid gap-4">${matchesHtml}</div>`;
-        }
+            </div>
+        `).join('');
+        container.innerHTML = `<div class="grid gap-4">${matchesHtml}</div>`;
     }
+}
     
     if (currentTab === 'standings') {
         if ((t.matches || []).length === 0) {

@@ -162,3 +162,25 @@ export function clearAllData() {
         renderTournamentList();
     }
 }
+export function setScore(matchIdx, s1, s2) {
+    const t = tournaments.find(x => x.id === activeTournamentId);
+    if (!t) return;
+    if (!t.matches) t.matches = [];
+    
+    if (matchIdx >= t.matches.length) {
+        console.error("Match index out of bounds:", matchIdx);
+        return;
+    }
+    
+    const match = t.matches[matchIdx];
+
+    // Handle empty strings (user cleared the input)
+    if (s1 !== null && s1 !== undefined) {
+        match.s1 = (s1 === '') ? null : Number(s1);
+    }
+    if (s2 !== null && s2 !== undefined) {
+        match.s2 = (s2 === '') ? null : Number(s2);
+    }
+    
+    saveData(); // This triggers Firebase sync
+}
