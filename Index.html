@@ -62,7 +62,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-around;
-            min-width: 240px;
+            min-width: 260px;
         }
     </style>
 </head>
@@ -90,6 +90,7 @@
 
     <div id="notification-container" class="fixed top-20 right-6 z-[110] space-y-3 pointer-events-none max-w-sm w-full"></div>
 
+    <!-- Confirmation Modal -->
     <div id="confirm-modal" class="fixed inset-0 z-[120] hidden flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-slate-850 shadow-2xl">
             <div class="w-12 h-12 rounded-2xl bg-red-150 dark:bg-red-500/10 text-red-500 flex items-center justify-center mb-4">
@@ -104,25 +105,35 @@
         </div>
     </div>
 
+    <!-- Main Dashboard View -->
     <main id="dashboard-view" class="max-w-4xl mx-auto p-5 sm:p-6 space-y-8 animate-slide-up">
         <section class="relative overflow-hidden bg-white dark:bg-slate-900 rounded-[2rem] p-7 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
             <div class="relative z-10">
                 <h2 class="text-3xl font-black mb-2 tracking-tight text-slate-800 dark:text-white">Create <span class="text-emerald-500 dark:text-emerald-400">Arenas.</span></h2>
-                <p class="text-slate-500 dark:text-slate-400 text-sm max-w-[320px] leading-relaxed">Organize tournament grids, track standings live, and experience seamless real-time syncing.</p>
+                <p class="text-slate-500 dark:text-slate-400 text-sm max-w-md leading-relaxed">Organize tournament brackets with table-topper seeding priority, same-group protections, penalty-shootout resolution, and instant reports.</p>
             </div>
             <div class="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-20 -mt-20"></div>
         </section>
 
         <div class="space-y-4">
-            <div class="flex items-center justify-between mb-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2 border-b border-slate-200/40 dark:border-slate-800/40 pb-4">
                 <h3 class="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
                     <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Active Live Arenas
                 </h3>
+                
+                <!-- Dashboard Search Field -->
+                <div class="relative w-full sm:max-w-xs">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                        <i data-lucide="search" class="w-4 h-4"></i>
+                    </span>
+                    <input id="arena-search-input" type="text" placeholder="Search arenas by name or format..." class="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm transition-colors focus:border-emerald-500">
+                </div>
             </div>
             <div id="tournament-list" class="grid sm:grid-cols-2 gap-4"></div>
         </div>
     </main>
 
+    <!-- Detail View -->
     <main id="detail-view" class="max-w-5xl mx-auto hidden animate-slide-up">
         <div class="p-6 bg-slate-50 dark:bg-darkBg border-b border-slate-200 dark:border-slate-80/50 sticky top-16 z-40 transition-colors duration-300">
             <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
@@ -130,6 +141,7 @@
                     <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Return to Dashboard
                 </button>
                 <div class="flex items-center gap-2">
+                    <span id="arena-last-updated" class="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mr-2">Syncing...</span>
                     <button id="export-pdf-btn" class="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all shadow-sm">
                         <i data-lucide="download" class="w-3 h-3"></i> Report PDF
                     </button>
@@ -144,7 +156,10 @@
             <div class="flex justify-between items-end">
                 <div>
                     <h2 id="active-title" class="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-800 dark:text-white">Tournament Name</h2>
-                    <p id="active-format" class="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">FORMAT</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <p id="active-format" class="text-slate-500 text-[10px] font-black uppercase tracking-widest">FORMAT</p>
+                        <span id="active-priority-badge" class="hidden text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Table Seeding Seeded</span>
+                    </div>
                 </div>
                 <div id="role-badge" class="flex items-center gap-1.5 bg-emerald-500 px-4 py-1.5 rounded-full text-white dark:text-slate-950 text-[10px] font-black uppercase shadow-md transition-all">
                     <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Admin
@@ -156,10 +171,12 @@
         <div id="tab-content" class="p-5 sm:p-6"></div>
     </main>
 
+    <!-- Spawn Arena Button -->
     <button id="fab" class="fixed bottom-8 right-8 bg-emerald-500 text-white dark:text-slate-950 p-5 rounded-[2rem] shadow-xl shadow-emerald-500/30 z-[70] border-4 border-slate-50 dark:border-darkBg active:scale-90 transition-all hover:bg-emerald-400 hover:scale-105">
         <i data-lucide="plus" class="w-8 h-8" stroke-width="3"></i>
     </button>
 
+    <!-- Create Arena Modal -->
     <div id="create-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-md">
         <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[3rem] p-8 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 class="text-2xl sm:text-3xl font-black mb-6 tracking-tighter italic uppercase text-center text-emerald-500 dark:text-emerald-400">Forge Arena</h3>
@@ -190,6 +207,15 @@
                     </select>
                 </div>
 
+                <!-- Seeding and Group Protection Rules Option -->
+                <div id="table-topper-wrapper" class="flex items-center justify-between p-4 rounded-2xl bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 transition-colors">
+                    <div class="space-y-0.5">
+                        <label class="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 block">Table Topper Protection</label>
+                        <p class="text-[8px] text-slate-400 uppercase tracking-tight">Avoids group-mates matching up & seeds Group Winners against lowest qualifiers.</p>
+                    </div>
+                    <input type="checkbox" id="arena-priority-seeding" checked class="w-4 h-4 accent-indigo-500 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded">
+                </div>
+
                 <div id="losers-final-wrapper" class="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 transition-colors">
                     <label class="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Include 3rd Place Match</label>
                     <input type="checkbox" id="arena-losers-final" checked class="w-4 h-4 accent-emerald-500 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded">
@@ -208,6 +234,7 @@
         </div>
     </div>
 
+    <!-- Gatekeeper PIN Modal -->
     <div id="pin-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-md">
         <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 border border-slate-200 dark:border-slate-800 text-center shadow-2xl">
             <div class="w-16 h-16 bg-amber-100 dark:bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -223,6 +250,7 @@
         </div>
     </div>
 
+    <!-- PDF Compile Wrapper (Invisible) -->
     <div id="pdf-container" class="hidden p-8 bg-white text-slate-900 space-y-8" style="width: 800px; min-height: 1100px;">
         <div class="border-b-4 border-emerald-500 pb-4 flex justify-between items-end">
             <div>
@@ -247,19 +275,24 @@
         let isReadOnlyMode = true; 
         
         let fbDb = null;
-        let fbAppId = 'default-ewar-app';
+        let fbAppId = 'ewar-app';
         let currentUser = null;
+
+        // Search Queries and Filters State
+        let arenaSearchQuery = '';
+        let matchSearchQuery = '';
+        let matchStatusFilter = 'all';
 
         // Stage Constants
         const STAGES = {
             GROUPS: 'Group Stage',
-            LEAGUE: 'League',
+            LEAGUE: 'League Stage',
             R16: 'Round of 16',
             QUARTERS: 'Quarterfinals',
             SEMIS: 'Semifinals',
-            FINAL: 'Final',
+            FINAL: 'Finals',
             THIRD_PLACE: '3rd Place Match',
-            KNOCKOUT: 'Knockout'
+            KNOCKOUT: 'Knockout Stage'
         };
 
         // Custom Notification Controller
@@ -367,10 +400,15 @@
                                     showDashboard(); 
                                 } else {
                                     const activeEl = document.activeElement;
-                                    const isInputFocused = activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('match-score-input');
+                                    const isInputFocused = activeEl && activeEl.tagName === 'INPUT' && 
+                                        (activeEl.classList.contains('match-score-input') || 
+                                         activeEl.id === 'match-search-input' || 
+                                         activeEl.id === 'match-status-filter');
+                                    
                                     if (!isInputFocused) {
                                         renderTabsNav(); 
                                         renderTabContent();
+                                        updateLastUpdatedLabel(currentActiveT.updatedAt);
                                     }
                                 }
                             }
@@ -381,12 +419,12 @@
                         });
                     });
                 } else {
-                    throw new Error("No Firebase config provided by environment.");
+                    throw new Error("No Firebase config provided. Operating local fallback.");
                 }
             } catch (e) {
-                console.warn("Falling back to local storage sync engine.", e);
+                console.warn("Operating local storage sync engine.", e);
                 document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-slate-500";
-                document.getElementById('sync-text').innerText = "Local Storage Mode";
+                document.getElementById('sync-text').innerText = "Local Mode";
                 
                 const localData = localStorage.getItem('ewar_tournaments');
                 if (localData) tournaments = JSON.parse(localData);
@@ -395,6 +433,7 @@
         }
 
         async function pushUpdateData(tournamentObj) {
+            tournamentObj.updatedAt = Date.now();
             if (fbDb && currentUser) {
                 try {
                     await setDoc(doc(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments', tournamentObj.id), tournamentObj);
@@ -406,6 +445,7 @@
                 localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
                 renderTournamentList();
                 renderTabContent();
+                updateLastUpdatedLabel(tournamentObj.updatedAt);
             }
         }
 
@@ -422,6 +462,19 @@
                 renderTournamentList();
                 showDashboard();
             }
+        }
+
+        function updateLastUpdatedLabel(timestamp) {
+            const label = document.getElementById('arena-last-updated');
+            if (!label) return;
+            if (!timestamp) {
+                label.innerText = "Updated just now";
+                return;
+            }
+            const secondsAgo = Math.floor((Date.now() - timestamp) / 1000);
+            if (secondsAgo < 5) label.innerText = "Synced just now";
+            else if (secondsAgo < 60) label.innerText = `Synced ${secondsAgo}s ago`;
+            else label.innerText = `Synced ${Math.floor(secondsAgo / 60)}m ago`;
         }
 
         // ---------- BRACKET GENERATION ENGINE ----------
@@ -465,7 +518,16 @@
 
                     for (let i = 0; i < group.length; i++) {
                         for (let j = i + 1; j < group.length; j++) {
-                            matches.push({ id: generateUUID(), t1: group[i].name, t2: group[j].name, s1: "", s2: "", stage: STAGES.GROUPS, grp: groupIdx });
+                            matches.push({ 
+                                id: generateUUID(), 
+                                t1: group[i].name, 
+                                t2: group[j].name, 
+                                s1: "", 
+                                s2: "", 
+                                stage: STAGES.GROUPS, 
+                                grp: groupIdx,
+                                status: "Scheduled"
+                            });
                         }
                     }
                 }
@@ -477,7 +539,15 @@
                 for (let i = 0; i < teams.length; i++) {
                     for (let j = i + 1; j < teams.length; j++) {
                         for (let l = 0; l < legs; l++) {
-                            matches.push({ id: generateUUID(), t1: teams[i].name, t2: teams[j].name, s1: "", s2: "", stage: STAGES.LEAGUE });
+                            matches.push({ 
+                                id: generateUUID(), 
+                                t1: teams[i].name, 
+                                t2: teams[j].name, 
+                                s1: "", 
+                                s2: "", 
+                                stage: STAGES.LEAGUE,
+                                status: "Scheduled"
+                            });
                         }
                     }
                 }
@@ -505,11 +575,21 @@
                     t1: bracketTeams[i] ? bracketTeams[i].name || bracketTeams[i] : "TBD",
                     t2: bracketTeams[i+1] ? bracketTeams[i+1].name || bracketTeams[i+1] : "TBD",
                     s1: "", s2: "", p1: "", p2: "", 
-                    stage: label, koIndex: i / 2, totalKoSlots: size
+                    stage: label, koIndex: i / 2, totalKoSlots: size,
+                    status: "Scheduled"
                 });
             }
             if (size === 4 && includeLosers) {
-                matches.push({ id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "", stage: STAGES.THIRD_PLACE, koIndex: 99, totalKoSlots: 4 });
+                matches.push({ 
+                    id: generateUUID(), 
+                    t1: "TBD", 
+                    t2: "TBD", 
+                    s1: "", s2: "", p1: "", p2: "", 
+                    stage: STAGES.THIRD_PLACE, 
+                    koIndex: 99, 
+                    totalKoSlots: 4,
+                    status: "Scheduled"
+                });
             }
         }
 
@@ -529,34 +609,130 @@
                 const teamsList = Object.values(t.teams || {});
 
                 if (t.stage === STAGES.GROUPS) {
-                    const groups = [...new Set(Object.values(t.groupAssignments))].sort();
-                    const quotaPerGroup = Math.floor(size / groups.length);
+                    const groupAssignments = t.groupAssignments || {};
+                    const groups = [...new Set(Object.values(groupAssignments))].sort();
                     
+                    // Advanced table topper & runner up separation
+                    let groupWinners = [];
+                    let groupRunnersUp = [];
+                    let groupThirds = [];
+
                     groups.forEach(gId => {
-                        const sorted = calculateStats(teamsList, matchesArr, gId, t.groupAssignments);
-                        for (let i = 0; i < quotaPerGroup; i++) {
-                            if (sorted[i]) qualifiedTeams.push(sorted[i]);
-                        }
+                        const sortedGroup = calculateStats(teamsList, matchesArr, gId, groupAssignments);
+                        if (sortedGroup[0]) groupWinners.push(sortedGroup[0]);
+                        if (sortedGroup[1]) groupRunnersUp.push(sortedGroup[1]);
+                        if (sortedGroup[2]) groupThirds.push(sortedGroup[2]);
                     });
+
+                    // Sort within pots to prioritize table toppers
+                    groupWinners.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+                    groupRunnersUp.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+                    groupThirds.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+
+                    // Combine based on required knockout bracket size
+                    if (size === 2) {
+                        // 2 Teams qualify (Finals) - take the two best group winners
+                        qualifiedTeams = groupWinners.slice(0, 2);
+                    } else if (size === 4) {
+                        // 4 Teams qualify - try 2 from each group if 2 groups, otherwise best winners & runners up
+                        if (groups.length === 2) {
+                            qualifiedTeams = [groupWinners[0], groupRunnersUp[0], groupWinners[1], groupRunnersUp[1]];
+                        } else {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp].slice(0, 4);
+                        }
+                    } else if (size === 8) {
+                        // 8 Teams qualify
+                        if (groups.length === 4) {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp]; // 4 winners + 4 runners up
+                        } else if (groups.length === 2) {
+                            qualifiedTeams = [
+                                groupWinners[0], groupRunnersUp[0], groupThirds[0], 
+                                groupWinners[1], groupRunnersUp[1], groupThirds[1]
+                            ].slice(0, 8);
+                        } else {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 8);
+                        }
+                    } else { // R16 (16 Teams)
+                        qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 16);
+                    }
+
+                    // Pad with TBD if too few teams
+                    while (qualifiedTeams.length < size) {
+                        qualifiedTeams.push({ name: "TBD" });
+                    }
+
+                    // Seeding & Protection Pairing Logic
+                    if (t.prioritySeeding && qualifiedTeams.length === size && groups.length > 1) {
+                        // Standard seed pot separation
+                        const half = size / 2;
+                        let potA = qualifiedTeams.slice(0, half); // Seeded toppers
+                        let potB = qualifiedTeams.slice(half);     // Unseeded runners up/lower rankers
+
+                        // Shuffle Pot B to maintain fair distribution, keeping seed structure
+                        potB = fisherYates([...potB]);
+                        
+                        // Prevent group mates matching up in first round
+                        let finalPairs = [];
+                        for (let i = 0; i < half; i++) {
+                            const seededTeam = potA[i];
+                            let partnerIdx = -1;
+                            
+                            // Find partner from different group
+                            for (let j = 0; j < potB.length; j++) {
+                                const seededGrp = groupAssignments[seededTeam.name];
+                                const unseededGrp = groupAssignments[potB[j].name];
+                                if (!seededGrp || !unseededGrp || seededGrp !== unseededGrp) {
+                                    partnerIdx = j;
+                                    break;
+                                }
+                            }
+                            
+                            // Fallback if strict group protection is impossible
+                            if (partnerIdx === -1) partnerIdx = 0;
+                            
+                            const matchedPartner = potB.splice(partnerIdx, 1)[0];
+                            finalPairs.push(seededTeam);
+                            finalPairs.push(matchedPartner);
+                        }
+                        
+                        buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
+                    } else {
+                        // Standard sequential or table-topper seeding pairing (1st vs size, 2nd vs size-1)
+                        let sortedSeeding = [...qualifiedTeams];
+                        let finalPairs = [];
+                        while(sortedSeeding.length > 0) {
+                            finalPairs.push(sortedSeeding.shift());
+                            if(sortedSeeding.length > 0) finalPairs.push(sortedSeeding.pop());
+                        }
+                        buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
+                    }
                 } else {
+                    // League style qualification (no group protection needed)
                     const sorted = calculateStats(teamsList, matchesArr);
                     qualifiedTeams = sorted.slice(0, size);
+                    while (qualifiedTeams.length < size) {
+                        qualifiedTeams.push({ name: "TBD" });
+                    }
+
+                    // Seeded pairing: 1 vs 8, 2 vs 7, etc.
+                    let finalPairs = [];
+                    let sortedSeeding = [...qualifiedTeams];
+                    while (sortedSeeding.length > 0) {
+                        finalPairs.push(sortedSeeding.shift());
+                        if (sortedSeeding.length > 0) finalPairs.push(sortedSeeding.pop());
+                    }
+                    buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
                 }
 
-                while (qualifiedTeams.length < size) {
-                    qualifiedTeams.push({ name: "TBD" });
-                }
-
-                buildKnockoutRound(t.matches, qualifiedTeams, size, t.includeLosersFinal);
                 t.stage = labelForKoSize(size);
-                showNotification("Qualification finalized! Knockout grid forged.");
+                showNotification("Qualification finalized! Seeding matches forged.");
                 return;
             }
 
             // Phase 2: Internal Bracket Tree Propagation Flow
             const currentRoundLabel = t.stage;
             const roundMatches = matchesArr.filter(m => m.stage === currentRoundLabel);
-            const allRoundFinished = roundMatches.every(m => m.s1 !== "" && m.s2 !== "");
+            const allRoundFinished = roundMatches.every(m => m.status === "Finished");
             
             if (!allRoundFinished) return;
 
@@ -566,7 +742,7 @@
             if (currentRoundLabel === STAGES.R16) { nextSize = 8; nextLabel = STAGES.QUARTERS; }
             else if (currentRoundLabel === STAGES.QUARTERS) { nextSize = 4; nextLabel = STAGES.SEMIS; }
             else if (currentRoundLabel === STAGES.SEMIS) { nextSize = 2; nextLabel = STAGES.FINAL; }
-            else return; // Reached Final or 3rd place
+            else return; // Reached Finals / 3rd Place
 
             // Inject slots for upcoming round structure if missing
             const nextRoundExists = matchesArr.some(m => m.stage === nextLabel);
@@ -574,11 +750,12 @@
                 for (let i = 0; i < nextSize; i += 2) {
                     t.matches.push({
                         id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "",
-                        stage: nextLabel, koIndex: i / 2, totalKoSlots: nextSize
+                        stage: nextLabel, koIndex: i / 2, totalKoSlots: nextSize,
+                        status: "Scheduled"
                     });
                 }
                 if (nextSize === 2 && t.includeLosersFinal && !matchesArr.some(m => m.stage === STAGES.THIRD_PLACE)) {
-                    t.matches.push({ id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "", stage: STAGES.THIRD_PLACE, koIndex: 99, totalKoSlots: 4 });
+                    t.matches.push({ id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "", stage: STAGES.THIRD_PLACE, koIndex: 99, totalKoSlots: 4, status: "Scheduled" });
                 }
             }
 
@@ -586,11 +763,24 @@
             roundMatches.forEach(m => {
                 let s1 = parseInt(m.s1, 10);
                 let s2 = parseInt(m.s2, 10);
-                let p1 = parseInt(m.p1 || 0, 10);
-                let p2 = parseInt(m.p2 || 0, 10);
+                let p1 = m.p1 !== "" ? parseInt(m.p1, 10) : null;
+                let p2 = m.p2 !== "" ? parseInt(m.p2, 10) : null;
                 
-                let winner = (s1 > s2) ? m.t1 : (s2 > s1) ? m.t2 : (p1 > p2) ? m.t1 : m.t2;
-                let loser = (winner === m.t1) ? m.t2 : m.t1;
+                let winner = "";
+                let loser = "";
+
+                if (s1 > s2) {
+                    winner = m.t1;
+                    loser = m.t2;
+                } else if (s2 > s1) {
+                    winner = m.t2;
+                    loser = m.t1;
+                } else if (p1 !== null && p2 !== null) {
+                    winner = (p1 > p2) ? m.t1 : m.t2;
+                    loser = (winner === m.t1) ? m.t2 : m.t1;
+                }
+
+                if (!winner) return; // Prevent advancing if tie unresolved
                 
                 let targetKoIdx = Math.floor(m.koIndex / 2);
                 let targetSlotPosition = (m.koIndex % 2 === 0) ? 't1' : 't2';
@@ -614,13 +804,14 @@
             showNotification(`All matches complete! Advancing to ${nextLabel}.`);
         }
 
-        // ---------- COMPUTE SYSTEM STANDINGS STANDARDS ----------
+        // ---------- COMPUTE SYSTEM STANDINGS WITH HEAD-TO-HEAD TIEBREAKER ----------
         function calculateStats(teams, matches, groupId = null, assignments = null) {
             const stats = {};
             teams.forEach(t => {
                 stats[t.name] = { name: t.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
             });
 
+            // Populate base metrics
             matches.forEach(m => {
                 if (m.s1 === "" || m.s2 === "") return;
                 if (groupId && assignments && (assignments[m.t1] !== groupId || assignments[m.t2] !== groupId)) return;
@@ -663,7 +854,40 @@
                 list = list.filter(t => assignments[t.name] === groupId);
             }
 
-            return list.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+            // Head-to-head comparison logic function
+            const getH2HPoints = (teamA, teamB) => {
+                let pointsA = 0;
+                matches.forEach(m => {
+                    if (m.s1 === "" || m.s2 === "") return;
+                    if ((m.t1 === teamA && m.t2 === teamB) || (m.t1 === teamB && m.t2 === teamA)) {
+                        let s1 = parseInt(m.s1, 10);
+                        let s2 = parseInt(m.s2, 10);
+                        if (m.t1 === teamA) {
+                            if (s1 > s2) pointsA += 3;
+                            else if (s1 === s2) pointsA += 1;
+                        } else {
+                            if (s2 > s1) pointsA += 3;
+                            else if (s2 === s1) pointsA += 1;
+                        }
+                    }
+                });
+                return pointsA;
+            };
+
+            // High Precision FIFA/UEFA Sorting Hierarchy
+            return list.sort((a, b) => {
+                // 1. Points
+                if (b.pts !== a.pts) return b.pts - a.pts;
+                // 2. Goal Difference
+                if (b.gd !== a.gd) return b.gd - a.gd;
+                // 3. Goals Scored
+                if (b.gf !== a.gf) return b.gf - a.gf;
+                // 4. Head-to-Head points
+                const h2hDiff = getH2HPoints(b.name, a.name) - getH2HPoints(a.name, b.name);
+                if (h2hDiff !== 0) return h2hDiff;
+                // 5. Alphabetical fallback
+                return a.name.localeCompare(b.name);
+            });
         }
 
         // ---------- PRESENTATION RENDERERS (UI LAYERS) ----------
@@ -671,15 +895,25 @@
             const listEl = document.getElementById('tournament-list');
             listEl.innerHTML = '';
 
-            if (tournaments.length === 0) {
+            // Apply Arena Search Filter
+            let filteredTournaments = tournaments;
+            if (arenaSearchQuery.trim() !== '') {
+                const query = arenaSearchQuery.toLowerCase().trim();
+                filteredTournaments = tournaments.filter(t => 
+                    t.name.toLowerCase().includes(query) || 
+                    t.format.toLowerCase().includes(query)
+                );
+            }
+
+            if (filteredTournaments.length === 0) {
                 listEl.innerHTML = `
                     <div class="col-span-full border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 text-center rounded-[2rem]">
-                        <p class="text-xs font-black uppercase text-slate-400 tracking-wider">No active arenas discovered. Tap '+' below to spawn one.</p>
+                        <p class="text-xs font-black uppercase text-slate-400 tracking-wider">No matching active arenas discovered.</p>
                     </div>`;
                 return;
             }
 
-            tournaments.forEach(t => {
+            filteredTournaments.forEach(t => {
                 let card = document.createElement('div');
                 card.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] hover:border-emerald-500 dark:hover:border-emerald-400 cursor-pointer transition-all shadow-md group relative overflow-hidden";
                 
@@ -688,7 +922,10 @@
                 
                 card.innerHTML = `
                     <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-500/5 to-transparent rounded-bl-full"></div>
-                    <span class="text-[9px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md uppercase">${escapeHtml(t.format)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md uppercase">${escapeHtml(t.format)}</span>
+                        ${t.prioritySeeding ? `<span class="text-[9px] font-black tracking-widest text-indigo-500 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-md uppercase">Seeded</span>` : ''}
+                    </div>
                     <h4 class="font-black text-lg tracking-tight uppercase mt-3 text-slate-800 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors">${escapeHtml(t.name)}</h4>
                     <div class="flex items-center gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         <span class="flex items-center gap-1"><i data-lucide="users" class="w-3.5 h-3.5 text-slate-500"></i> ${teamsCount} Enrolled</span>
@@ -751,6 +988,14 @@
                 ? `<i data-lucide="eye" class="w-3.5 h-3.5"></i> Spectator` 
                 : `<i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Arena Host`;
 
+            // Display seating option badge in header
+            const prioBadge = document.getElementById('active-priority-badge');
+            if (t.prioritySeeding) {
+                prioBadge.classList.remove('hidden');
+            } else {
+                prioBadge.classList.add('hidden');
+            }
+
             if (currentTab === 'teams') {
                 let html = `
                     <div class="max-w-md mx-auto space-y-6">
@@ -771,8 +1016,16 @@
                         let nameInput = document.getElementById('team-input-name');
                         let tName = nameInput.value.trim();
                         if (!tName) return;
+                        
+                        // Strict Case Insensitive Registration Tag check
                         if (!t.teams) t.teams = {};
-                        if (t.teams[tName]) return showNotification("Team handle already active.", "warning");
+                        const normalizedInput = tName.toLowerCase();
+                        const exists = Object.keys(t.teams).some(team => team.toLowerCase() === normalizedInput);
+                        
+                        if (exists) {
+                            return showNotification("Duplicate handle detected. Enter a unique handle.", "warning");
+                        }
+                        
                         t.teams[tName] = { name: tName };
                         nameInput.value = '';
                         pushUpdateData(t);
@@ -831,21 +1084,79 @@
                             }">${st}</button>
                         `).join('')}
                     </div>
+
+                    <!-- Search and Filter Panel for matches -->
+                    <div class="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-100/40 dark:bg-slate-900/40 p-4 rounded-3xl border border-slate-200/50 dark:border-slate-800/50">
+                        <div class="relative flex-1">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                            </span>
+                            <input id="match-search-input" type="text" placeholder="Search matches by team handle..." value="${escapeHtml(matchSearchQuery)}" class="w-full pl-9 pr-4 py-3 text-xs rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white transition-colors focus:border-emerald-500 shadow-sm">
+                        </div>
+                        <div class="relative min-w-[150px]">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="filter" class="w-4 h-4"></i>
+                            </span>
+                            <select id="match-status-filter" class="w-full pl-9 pr-8 py-3 text-xs rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold transition-colors focus:border-emerald-500 shadow-sm appearance-none cursor-pointer">
+                                <option value="all" ${matchStatusFilter === 'all' ? 'selected' : ''}>All Matches</option>
+                                <option value="Scheduled" ${matchStatusFilter === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
+                                <option value="Live" ${matchStatusFilter === 'Live' ? 'selected' : ''}>Live</option>
+                                <option value="Finished" ${matchStatusFilter === 'Finished' ? 'selected' : ''}>Finished</option>
+                            </select>
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                            </span>
+                        </div>
+                    </div>
+
                     <div class="grid md:grid-cols-2 gap-4" id="matches-render-container"></div>
                 `;
                 container.innerHTML = filterHtml;
 
                 const filterButtons = container.querySelectorAll('[data-stage-filter]');
+                
+                // Live interactive filtering of match subsets
+                const applyAllFilters = () => {
+                    let subset = matchesList.filter(m => m.stage === activeStageFilter);
+                    
+                    if (matchSearchQuery.trim() !== '') {
+                        const q = matchSearchQuery.toLowerCase().trim();
+                        subset = subset.filter(m => 
+                            m.t1.toLowerCase().includes(q) || 
+                            m.t2.toLowerCase().includes(q)
+                        );
+                    }
+                    
+                    if (matchStatusFilter !== 'all') {
+                        subset = subset.filter(m => m.status === matchStatusFilter);
+                    }
+                    
+                    displayFilteredMatches(subset, t, isLockedArena);
+                };
+
                 filterButtons.forEach(btn => {
                     btn.onclick = () => {
                         activeStageFilter = btn.getAttribute('data-stage-filter');
                         filterButtons.forEach(b => b.className = b.className.replace(/bg-emerald-500.*/, 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'));
                         btn.className = "px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl border transition-all whitespace-nowrap bg-emerald-500 border-emerald-500 text-white dark:text-slate-950 shadow-md";
-                        displayFilteredMatches(matchesList.filter(m => m.stage === activeStageFilter), t, isLockedArena);
+                        applyAllFilters();
                     };
                 });
 
-                displayFilteredMatches(matchesList.filter(m => m.stage === activeStageFilter), t, isLockedArena);
+                const matchSearchInput = document.getElementById('match-search-input');
+                const matchStatusSelect = document.getElementById('match-status-filter');
+
+                matchSearchInput.oninput = (e) => {
+                    matchSearchQuery = e.target.value;
+                    applyAllFilters();
+                };
+
+                matchStatusSelect.onchange = (e) => {
+                    matchStatusFilter = e.target.value;
+                    applyAllFilters();
+                };
+
+                applyAllFilters();
             } 
             else if (currentTab === 'standings') {
                 let matchesList = t.matches ? Object.values(t.matches) : [];
@@ -899,18 +1210,36 @@
 
                     rMatches.forEach(m => {
                         let card = document.createElement('div');
-                        card.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-sm text-xs font-bold space-y-2 min-w-[210px]";
+                        card.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-sm text-xs font-bold space-y-2 min-w-[230px]";
                         
-                        let s1Val = m.s1 !== "" ? `${m.s1}${m.p1 ? ` (${m.p1})` : ''}` : '-';
-                        let s2Val = m.s2 !== "" ? `${m.s2}${m.p2 ? ` (${m.p2})` : ''}` : '-';
+                        let s1Val = m.s1 !== "" ? `${m.s1}` : '-';
+                        let s2Val = m.s2 !== "" ? `${m.s2}` : '-';
+
+                        // Check and render shootout details
+                        let p1Badge = (m.p1 !== "" && m.p1 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p1})</span>` : '';
+                        let p2Badge = (m.p2 !== "" && m.p2 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p2})</span>` : '';
+
+                        let t1Winner = false;
+                        let t2Winner = false;
+
+                        if (m.s1 !== "" && m.s2 !== "") {
+                            let s1Int = parseInt(m.s1, 10);
+                            let s2Int = parseInt(m.s2, 10);
+                            if (s1Int > s2Int) t1Winner = true;
+                            else if (s2Int > s1Int) t2Winner = true;
+                            else if (m.p1 !== "" && m.p2 !== "") {
+                                if (parseInt(m.p1, 10) > parseInt(m.p2, 10)) t1Winner = true;
+                                else t2Winner = true;
+                            }
+                        }
 
                         card.innerHTML = `
                             <div class="flex justify-between items-center py-1 border-b dark:border-slate-800/50">
-                                <span class="truncate ${m.s1 !== "" && parseInt(m.s1,10) > parseInt(m.s2,10) ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t1)}</span>
+                                <span class="truncate ${t1Winner ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t1)} ${p1Badge}</span>
                                 <span class="font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s1Val}</span>
                             </div>
                             <div class="flex justify-between items-center py-1">
-                                <span class="truncate ${m.s2 !== "" && parseInt(m.s2,10) > parseInt(m.s1,10) ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t2)}</span>
+                                <span class="truncate ${t2Winner ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t2)} ${p2Badge}</span>
                                 <span class="font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s2Val}</span>
                             </div>
                         `;
@@ -924,18 +1253,20 @@
                 if (thirdPlaceMatch) {
                     let tpDiv = document.createElement('div');
                     tpDiv.className = "bracket-round justify-center";
-                    let s1Val = thirdPlaceMatch.s1 !== "" ? `${thirdPlaceMatch.s1}${thirdPlaceMatch.p1 ? ` (${thirdPlaceMatch.p1})` : ''}` : '-';
-                    let s2Val = thirdPlaceMatch.s2 !== "" ? `${thirdPlaceMatch.s2}${thirdPlaceMatch.p2 ? ` (${thirdPlaceMatch.p2})` : ''}` : '-';
+                    let s1Val = thirdPlaceMatch.s1 !== "" ? `${thirdPlaceMatch.s1}` : '-';
+                    let s2Val = thirdPlaceMatch.s2 !== "" ? `${thirdPlaceMatch.s2}` : '-';
+                    let p1Badge = (thirdPlaceMatch.p1 !== "" && thirdPlaceMatch.p1 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${thirdPlaceMatch.p1})</span>` : '';
+                    let p2Badge = (thirdPlaceMatch.p2 !== "" && thirdPlaceMatch.p2 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${thirdPlaceMatch.p2})</span>` : '';
 
                     tpDiv.innerHTML = `
                         <h5 class="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 text-center border-b dark:border-slate-800/80 pb-2">3rd Place Match</h5>
-                        <div class="bg-white dark:bg-slate-900 border border-amber-500/20 dark:border-amber-500/10 p-4 rounded-2xl shadow-md text-xs font-bold space-y-2 min-w-[210px]">
+                        <div class="bg-white dark:bg-slate-900 border border-amber-500/20 dark:border-amber-500/10 p-4 rounded-2xl shadow-md text-xs font-bold space-y-2 min-w-[230px]">
                             <div class="flex justify-between items-center py-1 border-b dark:border-slate-800/50">
-                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t1)}</span>
+                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t1)} ${p1Badge}</span>
                                 <span class="font-mono bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s1Val}</span>
                             </div>
                             <div class="flex justify-between items-center py-1">
-                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t2)}</span>
+                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t2)} ${p2Badge}</span>
                                 <span class="font-mono bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s2Val}</span>
                             </div>
                         </div>
@@ -954,20 +1285,43 @@
             grid.innerHTML = '';
 
             if (filteredMatches.length === 0) {
-                grid.innerHTML = `<p class="col-span-full text-center text-xs font-black uppercase text-slate-400 p-6">No scheduled entries inside this block segment.</p>`;
+                grid.innerHTML = `<p class="col-span-full text-center text-xs font-black uppercase text-slate-400 p-6">No scheduled matches match current filters.</p>`;
                 return;
             }
 
             filteredMatches.forEach(m => {
                 let div = document.createElement('div');
-                div.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-5 rounded-3xl shadow-sm space-y-3";
+                div.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-5 rounded-3xl shadow-sm space-y-3 relative overflow-hidden";
                 
                 let isKo = (m.stage !== STAGES.GROUPS && m.stage !== STAGES.LEAGUE);
+                
+                // Show Shootout controls dynamically ONLY when scores are tie in a knockout stage
+                let showShootoutInput = false;
+                if (isKo && m.s1 !== "" && m.s2 !== "") {
+                    let val1 = parseInt(m.s1, 10);
+                    let val2 = parseInt(m.s2, 10);
+                    if (val1 === val2) {
+                        showShootoutInput = true;
+                    }
+                }
+
+                // Render dynamic status indicators
+                let statusBadge = '';
+                if (m.status === "Live") {
+                    statusBadge = `<span class="bg-red-500/15 text-red-500 border border-red-500/25 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><span class="w-1 h-1 rounded-full bg-red-500 animate-pulse"></span> Live</span>`;
+                } else if (m.status === "Finished") {
+                    statusBadge = `<span class="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded text-[8px] font-black uppercase">Finished</span>`;
+                } else {
+                    statusBadge = `<span class="bg-slate-100 dark:bg-slate-800 text-slate-400 border border-transparent px-2 py-0.5 rounded text-[8px] font-black uppercase">Scheduled</span>`;
+                }
                 
                 div.innerHTML = `
                     <div class="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <span>${m.stage} ${m.grp ? `• Pool ${m.grp}` : ''}</span>
-                        ${isKo ? `<span class="text-amber-500">Knockout Knock</span>` : ''}
+                        <div class="flex items-center gap-2">
+                            ${isKo ? `<span class="text-amber-500">Knockout</span>` : ''}
+                            ${statusBadge}
+                        </div>
                     </div>
                     <div class="space-y-2">
                         <div class="flex items-center justify-between gap-4">
@@ -978,11 +1332,17 @@
                             <span class="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[140px]">${escapeHtml(m.t2)}</span>
                             <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s2" value="${m.s2}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
                         </div>
-                        ${isKo && !readOnly ? `
-                        <div class="flex gap-2 pt-1 border-t dark:border-slate-800/40">
-                            <input type="number" min="0" placeholder="P1 PK" data-match-id="${m.id}" data-score-pos="p1" value="${m.p1 || ''}" class="match-score-input w-full p-1.5 text-center text-[10px] bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
-                            <input type="number" min="0" placeholder="P2 PK" data-match-id="${m.id}" data-score-pos="p2" value="${m.p2 || ''}" class="match-score-input w-full p-1.5 text-center text-[10px] bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
-                        </div>` : ''}
+                        
+                        <!-- Penalty Shootout Trigger Fields -->
+                        <div class="shootout-container ${showShootoutInput ? '' : 'hidden'} space-y-2 pt-2 border-t border-dashed border-amber-500/20">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[9px] font-black uppercase text-amber-500">Shootout Required (PKs)</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="number" min="0" placeholder="PK 1" data-match-id="${m.id}" data-score-pos="p1" value="${m.p1 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                                <input type="number" min="0" placeholder="PK 2" data-match-id="${m.id}" data-score-pos="p2" value="${m.p2 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                            </div>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(div);
@@ -997,7 +1357,30 @@
                         if (matchObj) {
                             matchObj[pos] = e.target.value;
                             
-                            // Real-time evaluation processing pipeline
+                            // Dynamically evaluate status
+                            if (matchObj.s1 === "" && matchObj.s2 === "") {
+                                matchObj.status = "Scheduled";
+                            } else if (matchObj.s1 !== "" && matchObj.s2 !== "") {
+                                let s1 = parseInt(matchObj.s1, 10);
+                                let s2 = parseInt(matchObj.s2, 10);
+                                
+                                if (s1 === s2 && (matchObj.stage !== STAGES.GROUPS && matchObj.stage !== STAGES.LEAGUE)) {
+                                    // Tie shootout logic check
+                                    let p1 = matchObj.p1 !== "" ? parseInt(matchObj.p1, 10) : null;
+                                    let p2 = matchObj.p2 !== "" ? parseInt(matchObj.p2, 10) : null;
+                                    
+                                    if (p1 !== null && p2 !== null && p1 !== p2) {
+                                        matchObj.status = "Finished";
+                                    } else {
+                                        matchObj.status = "Live"; // Unresolved draw in KO
+                                    }
+                                } else {
+                                    matchObj.status = "Finished";
+                                }
+                            } else {
+                                matchObj.status = "Live";
+                            }
+                            
                             evaluateAndAdvanceKnockout(tournamentObj);
                             pushUpdateData(tournamentObj);
                         }
@@ -1072,8 +1455,13 @@
             document.getElementById('active-format').innerText = tournamentObj.format;
 
             currentTab = 'teams';
+            // Reset tournament specific searches
+            matchSearchQuery = '';
+            matchStatusFilter = 'all';
+
             renderTabsNav();
             renderTabContent();
+            updateLastUpdatedLabel(tournamentObj.updatedAt);
         }
 
         function switchTab(tabId) {
@@ -1092,7 +1480,7 @@
             const pdfBody = document.getElementById('pdf-body');
 
             pdfTitle.innerText = t.name.toUpperCase();
-            pdfFormat.innerText = `Tournament Structural Layout: ${t.format}`;
+            pdfFormat.innerText = `Tournament Format: ${t.format}`;
             pdfBody.innerHTML = '';
 
             let teamsList = t.teams ? Object.values(t.teams) : [];
@@ -1101,7 +1489,7 @@
             // Block 1: Squad Standings Stand Table Compile
             if (t.format !== "Pure Knockout" && matchesList.length > 0) {
                 let sec = document.createElement('div');
-                sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin-bottom:8px;text-transform:uppercase;">Current Standings Stand</h2>`;
+                sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin-bottom:8px;text-transform:uppercase;">Current Standings</h2>`;
                 if (t.format.includes('Groups')) {
                     const groupAssignments = t.groupAssignments || {};
                     const groups = [...new Set(Object.values(groupAssignments))].sort();
@@ -1116,7 +1504,7 @@
                 pdfBody.appendChild(sec);
             }
 
-            // Block 2: Complete Matches Logs
+            // Block 2: Complete Matches Logs with PK Status details
             if (matchesList.length > 0) {
                 let sec = document.createElement('div');
                 sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin:20px 0 8px;text-transform:uppercase;">Matches Logs Records</h2>`;
@@ -1128,11 +1516,14 @@
                 matchesList.forEach(m => {
                     let s1 = m.s1 !== "" ? m.s1 : '-';
                     let s2 = m.s2 !== "" ? m.s2 : '-';
+                    let p1Text = (m.p1 !== "" && m.p1 !== undefined) ? ` (PK: ${m.p1})` : '';
+                    let p2Text = (m.p2 !== "" && m.p2 !== undefined) ? ` (PK: ${m.p2})` : '';
+
                     grid.innerHTML += `
                         <div style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:bold;">
-                            <div style="color:#64748b;font-size:9px;margin-bottom:4px;text-transform:uppercase;">${m.stage}</div>
-                            <div style="display:flex;justify-content:between;"><span>${m.t1}</span><span>${s1}</span></div>
-                            <div style="display:flex;justify-content:between;margin-top:2px;"><span>${m.t2}</span><span>${s2}</span></div>
+                            <div style="color:#64748b;font-size:9px;margin-bottom:4px;text-transform:uppercase;">${m.stage} [${m.status}]</div>
+                            <div style="display:flex;justify-content:between;"><span>${m.t1}</span><span>${s1}${p1Text}</span></div>
+                            <div style="display:flex;justify-content:between;margin-top:2px;"><span>${m.t2}</span><span>${s2}${p2Text}</span></div>
                         </div>`;
                 });
                 sec.appendChild(grid);
@@ -1155,7 +1546,7 @@
                 showNotification("PDF generated successfully.");
             } catch (err) {
                 console.error(err);
-                showNotification("Failed to forge PDF artifact document.", "error");
+                showNotification("Failed to forge PDF document.", "error");
             } finally {
                 wrapper.classList.add('hidden');
             }
@@ -1179,6 +1570,13 @@
             document.getElementById('dashboard-link').onclick = showDashboard;
             document.getElementById('back-to-dashboard').onclick = showDashboard;
 
+            // Setup Dashboard Arena Search listener
+            const arenaSearchInput = document.getElementById('arena-search-input');
+            arenaSearchInput.oninput = (e) => {
+                arenaSearchQuery = e.target.value;
+                renderTournamentList();
+            };
+
             // Modal Controls
             const createModal = document.getElementById('create-modal');
             document.getElementById('fab').onclick = () => createModal.classList.remove('hidden');
@@ -1188,15 +1586,18 @@
             const formatSelect = document.getElementById('arena-format');
             const koWrapper = document.getElementById('knockout-teams-wrapper');
             const losersWrapper = document.getElementById('losers-final-wrapper');
+            const prioritySeedingWrapper = document.getElementById('table-topper-wrapper');
 
             formatSelect.onchange = () => {
                 let val = formatSelect.value;
                 if (val === "Pure Knockout" || val.includes("+ Knockout")) {
                     koWrapper.classList.remove('hidden');
                     losersWrapper.classList.remove('hidden');
+                    prioritySeedingWrapper.classList.remove('hidden');
                 } else {
                     koWrapper.classList.add('hidden');
                     losersWrapper.classList.add('hidden');
+                    prioritySeedingWrapper.classList.add('hidden');
                 }
             };
 
@@ -1206,6 +1607,7 @@
                 const format = formatSelect.value;
                 const koCount = document.getElementById('arena-ko-count').value;
                 const includeLosersFinal = document.getElementById('arena-losers-final').checked;
+                const prioritySeeding = document.getElementById('arena-priority-seeding').checked;
                 const pinRaw = document.getElementById('arena-pin').value.trim();
 
                 if (!name) return showNotification("Provide an authentic identity tag.", "error");
@@ -1220,8 +1622,9 @@
 
                 let newArena = {
                     id: generateUUID(),
-                    name, format, koCount, includeLosersFinal, hasPin, pinHash,
-                    stage: STAGES.GROUPS, teams: {}, matches: [], groupAssignments: {}
+                    name, format, koCount, includeLosersFinal, prioritySeeding, hasPin, pinHash,
+                    stage: STAGES.GROUPS, teams: {}, matches: [], groupAssignments: {},
+                    createdAt: Date.now(), updatedAt: Date.now()
                 };
 
                 await pushUpdateData(newArena);
@@ -1254,9 +1657,9 @@
                     document.getElementById('pin-modal').classList.add('hidden');
                     isReadOnlyMode = false;
                     launchRoomView(t);
-                    showNotification("Privileged access token verified. System unlocked.");
+                    showNotification("Privileged access verified. System unlocked.");
                 } else {
-                    showNotification("Invalid entry pass code string.", "error");
+                    showNotification("Invalid entry pass code.", "error");
                 }
             };
 
@@ -1265,7 +1668,7 @@
 
             document.getElementById('reset-tournament-btn').onclick = () => {
                 if (isReadOnlyMode) return;
-                triggerConfirm("Reset Match Progress?", "All recorded matrix matches scorelines inside this specific block layout will be permanently flushed.", async () => {
+                triggerConfirm("Reset Match Progress?", "All recorded matches inside this specific arena layout will be permanently flushed.", async () => {
                     const t = tournaments.find(x => x.id === activeTournamentId);
                     if (t) {
                         t.matches = [];
@@ -1284,6 +1687,16 @@
                     deleteTournamentData(activeTournamentId);
                 });
             };
+
+            // Setup automated UI updates on a soft cycle for relative updated-time ticks
+            setInterval(() => {
+                if (activeTournamentId) {
+                    const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
+                    if (currentActiveT) {
+                        updateLastUpdatedLabel(currentActiveT.updatedAt);
+                    }
+                }
+            }, 5000);
         });
     </script>
 </body>
