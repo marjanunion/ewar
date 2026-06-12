@@ -90,7 +90,6 @@
 
     <div id="notification-container" class="fixed top-20 right-6 z-[110] space-y-3 pointer-events-none max-w-sm w-full"></div>
 
-    <!-- Confirmation Modal -->
     <div id="confirm-modal" class="fixed inset-0 z-[120] hidden flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-slate-850 shadow-2xl">
             <div class="w-12 h-12 rounded-2xl bg-red-150 dark:bg-red-500/10 text-red-500 flex items-center justify-center mb-4">
@@ -105,7 +104,6 @@
         </div>
     </div>
 
-    <!-- Main Dashboard View -->
     <main id="dashboard-view" class="max-w-4xl mx-auto p-5 sm:p-6 space-y-8 animate-slide-up">
         <section class="relative overflow-hidden bg-white dark:bg-slate-900 rounded-[2rem] p-7 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
             <div class="relative z-10">
@@ -121,7 +119,6 @@
                     <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Active Live Arenas
                 </h3>
                 
-                <!-- Dashboard Search Field -->
                 <div class="relative w-full sm:max-w-xs">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
                         <i data-lucide="search" class="w-4 h-4"></i>
@@ -133,7 +130,6 @@
         </div>
     </main>
 
-    <!-- Detail View -->
     <main id="detail-view" class="max-w-5xl mx-auto hidden animate-slide-up">
         <div class="p-6 bg-slate-50 dark:bg-darkBg border-b border-slate-200 dark:border-slate-80/50 sticky top-16 z-40 transition-colors duration-300">
             <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
@@ -171,12 +167,10 @@
         <div id="tab-content" class="p-5 sm:p-6"></div>
     </main>
 
-    <!-- Spawn Arena Button -->
     <button id="fab" class="fixed bottom-8 right-8 bg-emerald-500 text-white dark:text-slate-950 p-5 rounded-[2rem] shadow-xl shadow-emerald-500/30 z-[70] border-4 border-slate-50 dark:border-darkBg active:scale-90 transition-all hover:bg-emerald-400 hover:scale-105">
         <i data-lucide="plus" class="w-8 h-8" stroke-width="3"></i>
     </button>
 
-    <!-- Create Arena Modal -->
     <div id="create-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-md">
         <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[3rem] p-8 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 class="text-2xl sm:text-3xl font-black mb-6 tracking-tighter italic uppercase text-center text-emerald-500 dark:text-emerald-400">Forge Arena</h3>
@@ -207,7 +201,6 @@
                     </select>
                 </div>
 
-                <!-- Seeding and Group Protection Rules Option -->
                 <div id="table-topper-wrapper" class="flex items-center justify-between p-4 rounded-2xl bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 transition-colors">
                     <div class="space-y-0.5">
                         <label class="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 block">Table Topper Protection</label>
@@ -234,7 +227,6 @@
         </div>
     </div>
 
-    <!-- Gatekeeper PIN Modal -->
     <div id="pin-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-6 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-md">
         <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 border border-slate-200 dark:border-slate-800 text-center shadow-2xl">
             <div class="w-16 h-16 bg-amber-100 dark:bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -250,7 +242,6 @@
         </div>
     </div>
 
-    <!-- PDF Compile Wrapper (Invisible) -->
     <div id="pdf-container" class="hidden p-8 bg-white text-slate-900 space-y-8" style="width: 800px; min-height: 1100px;">
         <div class="border-b-4 border-emerald-500 pb-4 flex justify-between items-end">
             <div>
@@ -264,7 +255,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Application State
@@ -367,60 +359,66 @@
         // ---------- CLOUD STORAGE ENGINE ----------
         async function initStorage() {
             try {
-                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                    const fbConfig = JSON.parse(__firebase_config);
-                    const app = initializeApp(fbConfig);
-                    const auth = getAuth(app);
-                    fbDb = getFirestore(app);
-                    fbAppId = typeof __app_id !== 'undefined' ? __app_id : 'ewar-app';
+                // Initializing Firebase from your provided config
+                const firebaseConfig = {
+                    apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
+                    authDomain: "ewar-fa1db.firebaseapp.com",
+                    databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com",
+                    projectId: "ewar-fa1db",
+                    storageBucket: "ewar-fa1db.firebasestorage.app",
+                    messagingSenderId: "287555570705",
+                    appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
+                    measurementId: "G-3P3RYNZXL0"
+                };
 
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                const app = initializeApp(firebaseConfig);
+                const analytics = getAnalytics(app);
+                const auth = getAuth(app);
+                
+                fbDb = getFirestore(app);
+                fbAppId = 'ewar-app'; // Used as root collection ID for documents
+
+                // Using anonymous sign-in by default
+                await signInAnonymously(auth);
+                
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (!currentUser) return;
+
+                    const tourneyRef = collection(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments');
                     
-                    onAuthStateChanged(auth, (user) => {
-                        currentUser = user;
-                        if (!currentUser) return;
-
-                        const tourneyRef = collection(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments');
+                    onSnapshot(tourneyRef, (snapshot) => {
+                        tournaments = snapshot.docs.map(d => d.data());
                         
-                        onSnapshot(tourneyRef, (snapshot) => {
-                            tournaments = snapshot.docs.map(d => d.data());
-                            
-                            document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
-                            document.getElementById('sync-text').innerText = "Live Engine Active";
+                        document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                        document.getElementById('sync-text').innerText = "Live Engine Active";
 
-                            renderTournamentList();
-                            
-                            if (activeTournamentId) {
-                                const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
-                                if (!currentActiveT) {
-                                    showDashboard(); 
-                                } else {
-                                    const activeEl = document.activeElement;
-                                    const isInputFocused = activeEl && activeEl.tagName === 'INPUT' && 
-                                        (activeEl.classList.contains('match-score-input') || 
-                                         activeEl.id === 'match-search-input' || 
-                                         activeEl.id === 'match-status-filter');
-                                    
-                                    if (!isInputFocused) {
-                                        renderTabsNav(); 
-                                        renderTabContent();
-                                        updateLastUpdatedLabel(currentActiveT.updatedAt);
-                                    }
+                        renderTournamentList();
+                        
+                        if (activeTournamentId) {
+                            const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
+                            if (!currentActiveT) {
+                                showDashboard(); 
+                            } else {
+                                const activeEl = document.activeElement;
+                                const isInputFocused = activeEl && activeEl.tagName === 'INPUT' && 
+                                    (activeEl.classList.contains('match-score-input') || 
+                                     activeEl.id === 'match-search-input' || 
+                                     activeEl.id === 'match-status-filter');
+                                
+                                if (!isInputFocused) {
+                                    renderTabsNav(); 
+                                    renderTabContent();
+                                    updateLastUpdatedLabel(currentActiveT.updatedAt);
                                 }
                             }
-                        }, (err) => {
-                            console.error("Firebase sync error:", err);
-                            document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-red-500";
-                            document.getElementById('sync-text').innerText = "Sync Failed";
-                        });
+                        }
+                    }, (err) => {
+                        console.error("Firebase sync error:", err);
+                        document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-red-500";
+                        document.getElementById('sync-text').innerText = "Sync Failed";
                     });
-                } else {
-                    throw new Error("No Firebase config provided. Operating local fallback.");
-                }
+                });
             } catch (e) {
                 console.warn("Operating local storage sync engine.", e);
                 document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-slate-500";
@@ -1085,7 +1083,6 @@
                         `).join('')}
                     </div>
 
-                    <!-- Search and Filter Panel for matches -->
                     <div class="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-100/40 dark:bg-slate-900/40 p-4 rounded-3xl border border-slate-200/50 dark:border-slate-800/50">
                         <div class="relative flex-1">
                             <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
@@ -1333,7 +1330,6 @@
                             <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s2" value="${m.s2}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
                         </div>
                         
-                        <!-- Penalty Shootout Trigger Fields -->
                         <div class="shootout-container ${showShootoutInput ? '' : 'hidden'} space-y-2 pt-2 border-t border-dashed border-amber-500/20">
                             <div class="flex items-center justify-between">
                                 <span class="text-[9px] font-black uppercase text-amber-500">Shootout Required (PKs)</span>
