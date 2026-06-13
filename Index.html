@@ -64,33 +64,6 @@
             justify-content: space-around;
             min-width: 260px;
         }
-
-        /* Loading & Responsive Tweaks */
-        .loading-spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #10b98133;
-            border-top-color: #10b981;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        @media (max-width: 640px) {
-            .bracket-container {
-                gap: 1rem;
-                padding: 0.5rem;
-            }
-            .bracket-round {
-                min-width: 220px;
-            }
-            .match-score-input {
-                width: 60px;
-            }
-        }
     </style>
 </head>
 <body class="pb-24 antialiased bg-slate-50 text-slate-900 dark:bg-darkBg dark:text-[#f1f5f9] transition-colors duration-300">
@@ -131,29 +104,6 @@
         </div>
     </div>
 
-    <div id="champion-modal" class="fixed inset-0 z-[130] hidden flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
-        <div class="bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 dark:from-emerald-500/10 dark:to-cyan-500/10 rounded-[3rem] p-8 text-center border border-emerald-500/30 shadow-2xl animate-slide-up">
-            <div class="w-24 h-24 mx-auto mb-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-xl">
-                <i data-lucide="trophy" class="w-12 h-12 text-white"></i>
-            </div>
-            <h3 class="text-3xl font-black italic uppercase text-emerald-500 mb-2">Champion Crowned!</h3>
-            <p id="champion-name" class="text-xl font-bold text-white mb-4"></p>
-            <button id="close-champion-btn" class="px-8 py-3 bg-emerald-500 rounded-2xl font-black text-xs uppercase hover:bg-emerald-400 transition-colors shadow-lg active:scale-95">Celebrate</button>
-        </div>
-    </div>
-
-    <div id="bulk-import-modal" class="fixed inset-0 z-[140] hidden flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md">
-        <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <h3 class="font-black text-lg mb-4 dark:text-white uppercase italic text-emerald-500">Bulk Import Teams</h3>
-            <textarea id="bulk-teams-input" rows="6" placeholder="Enter one team name per line...&#10;Team Alpha&#10;Team Bravo&#10;Team Charlie" 
-                class="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm outline-none text-slate-900 dark:text-white transition-colors focus:border-emerald-500"></textarea>
-            <div class="flex gap-3 mt-4">
-                <button id="cancel-bulk-btn" class="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs uppercase hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                <button id="confirm-bulk-btn" class="flex-1 py-3 bg-emerald-500 text-white dark:text-slate-950 rounded-xl font-bold text-xs uppercase shadow-lg hover:bg-emerald-400 transition-colors active:scale-95">Import</button>
-            </div>
-        </div>
-    </div>
-
     <main id="dashboard-view" class="max-w-4xl mx-auto p-5 sm:p-6 space-y-8 animate-slide-up">
         <section class="relative overflow-hidden bg-white dark:bg-slate-900 rounded-[2rem] p-7 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
             <div class="relative z-10">
@@ -186,11 +136,8 @@
                 <button id="back-to-dashboard" class="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase hover:gap-3 transition-all">
                     <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Return to Dashboard
                 </button>
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
                     <span id="arena-last-updated" class="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold mr-2">Syncing...</span>
-                    <button id="export-backup-btn" class="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all shadow-sm">
-                        <i data-lucide="download-cloud" class="w-3 h-3"></i> Backup
-                    </button>
                     <button id="export-pdf-btn" class="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all shadow-sm">
                         <i data-lucide="download" class="w-3 h-3"></i> Report PDF
                     </button>
@@ -337,8 +284,7 @@
             SEMIS: 'Semifinals',
             FINAL: 'Finals',
             THIRD_PLACE: '3rd Place Match',
-            KNOCKOUT: 'Knockout Stage',
-            CHAMPION: 'Champion Decided'
+            KNOCKOUT: 'Knockout Stage'
         };
 
         // Custom Notification Controller
@@ -410,14 +356,10 @@
             return array;
         };
 
-        function hasActiveMatches(t) {
-            if (!t.matches || t.matches.length === 0) return false;
-            return Object.values(t.matches).some(m => m.s1 !== "" || m.s2 !== "");
-        }
-
         // ---------- CLOUD STORAGE ENGINE ----------
         async function initStorage() {
             try {
+                // Initializing Firebase from your provided config
                 const firebaseConfig = {
                     apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
                     authDomain: "ewar-fa1db.firebaseapp.com",
@@ -434,8 +376,9 @@
                 const auth = getAuth(app);
                 
                 fbDb = getFirestore(app);
-                fbAppId = 'ewar-app';
+                fbAppId = 'ewar-app'; // Used as root collection ID for documents
 
+                // Using anonymous sign-in by default
                 await signInAnonymously(auth);
                 
                 onAuthStateChanged(auth, (user) => {
@@ -530,47 +473,6 @@
             if (secondsAgo < 5) label.innerText = "Synced just now";
             else if (secondsAgo < 60) label.innerText = `Synced ${secondsAgo}s ago`;
             else label.innerText = `Synced ${Math.floor(secondsAgo / 60)}m ago`;
-        }
-
-        async function exportTournamentData() {
-            const t = tournaments.find(x => x.id === activeTournamentId);
-            if (!t) return;
-            
-            const dataStr = JSON.stringify(t, null, 2);
-            const blob = new Blob([dataStr], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `eWAR_Backup_${t.name.replace(/\s+/g, '_')}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showNotification("Tournament backup downloaded");
-        }
-
-        function checkAndDeclareChampion(t) {
-            if (!t.matches) return;
-            
-            const finalMatch = Object.values(t.matches).find(m => m.stage === STAGES.FINAL && m.status === "Finished");
-            if (!finalMatch) return;
-            
-            let champion = "";
-            let s1 = parseInt(finalMatch.s1, 10);
-            let s2 = parseInt(finalMatch.s2, 10);
-            
-            if (s1 > s2) champion = finalMatch.t1;
-            else if (s2 > s1) champion = finalMatch.t2;
-            else if (finalMatch.p1 !== "" && finalMatch.p2 !== "") {
-                champion = parseInt(finalMatch.p1, 10) > parseInt(finalMatch.p2, 10) ? finalMatch.t1 : finalMatch.t2;
-            }
-            
-            if (champion && !t.champion) {
-                t.champion = champion;
-                t.completedAt = Date.now();
-                pushUpdateData(t);
-                
-                document.getElementById('champion-name').innerText = champion;
-                document.getElementById('champion-modal').classList.remove('hidden');
-            }
         }
 
         // ---------- BRACKET GENERATION ENGINE ----------
@@ -691,22 +593,15 @@
 
         // ---------- AUTO-ADVANCE EVALUATOR ENGINE ----------
         function evaluateAndAdvanceKnockout(t) {
-            if (isReadOnlyMode || !t || !t.matches || t.matches.length === 0) return;
-            if (t.format === "League Table (1 Leg)" || t.format === "League Table (2 Legs)") return;
+            if (isReadOnlyMode || !t || !t.matches || t.matches.length === 0 || t.format === "League Table (1 Leg)" || t.format === "League Table (2 Legs)") return;
 
             const matchesArr = Object.values(t.matches);
             const size = parseInt(t.koCount || 4, 10);
             
             // Phase 1: Qualification from Groups or League Table over to Knockouts
             if (t.stage === STAGES.GROUPS || t.stage === STAGES.LEAGUE) {
-                const relevantMatches = matchesArr.filter(m => 
-                    m.stage === STAGES.GROUPS || m.stage === STAGES.LEAGUE
-                );
-                const allFinished = relevantMatches.every(m => m.s1 !== "" && m.s2 !== "");
+                const allFinished = matchesArr.every(m => (m.stage === STAGES.GROUPS || m.stage === STAGES.LEAGUE) ? (m.s1 !== "" && m.s2 !== "") : true);
                 if (!allFinished) return;
-
-                // CRITICAL Guardrail to prevent re-running qualification
-                if (t.stage !== STAGES.GROUPS && t.stage !== STAGES.LEAGUE) return;
 
                 let qualifiedTeams = [];
                 const teamsList = Object.values(t.teams || {});
@@ -715,6 +610,7 @@
                     const groupAssignments = t.groupAssignments || {};
                     const groups = [...new Set(Object.values(groupAssignments))].sort();
                     
+                    // Advanced table topper & runner up separation
                     let groupWinners = [];
                     let groupRunnersUp = [];
                     let groupThirds = [];
@@ -726,21 +622,26 @@
                         if (sortedGroup[2]) groupThirds.push(sortedGroup[2]);
                     });
 
+                    // Sort within pots to prioritize table toppers
                     groupWinners.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
                     groupRunnersUp.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
                     groupThirds.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
 
+                    // Combine based on required knockout bracket size
                     if (size === 2) {
+                        // 2 Teams qualify (Finals) - take the two best group winners
                         qualifiedTeams = groupWinners.slice(0, 2);
                     } else if (size === 4) {
+                        // 4 Teams qualify - try 2 from each group if 2 groups, otherwise best winners & runners up
                         if (groups.length === 2) {
                             qualifiedTeams = [groupWinners[0], groupRunnersUp[0], groupWinners[1], groupRunnersUp[1]];
                         } else {
                             qualifiedTeams = [...groupWinners, ...groupRunnersUp].slice(0, 4);
                         }
                     } else if (size === 8) {
+                        // 8 Teams qualify
                         if (groups.length === 4) {
-                            qualifiedTeams = [...groupWinners, ...groupRunnersUp]; 
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp]; // 4 winners + 4 runners up
                         } else if (groups.length === 2) {
                             qualifiedTeams = [
                                 groupWinners[0], groupRunnersUp[0], groupThirds[0], 
@@ -749,26 +650,32 @@
                         } else {
                             qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 8);
                         }
-                    } else { 
+                    } else { // R16 (16 Teams)
                         qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 16);
                     }
 
+                    // Pad with TBD if too few teams
                     while (qualifiedTeams.length < size) {
                         qualifiedTeams.push({ name: "TBD" });
                     }
 
+                    // Seeding & Protection Pairing Logic
                     if (t.prioritySeeding && qualifiedTeams.length === size && groups.length > 1) {
+                        // Standard seed pot separation
                         const half = size / 2;
-                        let potA = qualifiedTeams.slice(0, half); 
-                        let potB = qualifiedTeams.slice(half);    
+                        let potA = qualifiedTeams.slice(0, half); // Seeded toppers
+                        let potB = qualifiedTeams.slice(half);     // Unseeded runners up/lower rankers
 
+                        // Shuffle Pot B to maintain fair distribution, keeping seed structure
                         potB = fisherYates([...potB]);
                         
+                        // Prevent group mates matching up in first round
                         let finalPairs = [];
                         for (let i = 0; i < half; i++) {
                             const seededTeam = potA[i];
                             let partnerIdx = -1;
                             
+                            // Find partner from different group
                             for (let j = 0; j < potB.length; j++) {
                                 const seededGrp = groupAssignments[seededTeam.name];
                                 const unseededGrp = groupAssignments[potB[j].name];
@@ -778,6 +685,7 @@
                                 }
                             }
                             
+                            // Fallback if strict group protection is impossible
                             if (partnerIdx === -1) partnerIdx = 0;
                             
                             const matchedPartner = potB.splice(partnerIdx, 1)[0];
@@ -787,6 +695,7 @@
                         
                         buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
                     } else {
+                        // Standard sequential or table-topper seeding pairing (1st vs size, 2nd vs size-1)
                         let sortedSeeding = [...qualifiedTeams];
                         let finalPairs = [];
                         while(sortedSeeding.length > 0) {
@@ -796,12 +705,14 @@
                         buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
                     }
                 } else {
+                    // League style qualification (no group protection needed)
                     const sorted = calculateStats(teamsList, matchesArr);
                     qualifiedTeams = sorted.slice(0, size);
                     while (qualifiedTeams.length < size) {
                         qualifiedTeams.push({ name: "TBD" });
                     }
 
+                    // Seeded pairing: 1 vs 8, 2 vs 7, etc.
                     let finalPairs = [];
                     let sortedSeeding = [...qualifiedTeams];
                     while (sortedSeeding.length > 0) {
@@ -817,13 +728,11 @@
             }
 
             // Phase 2: Internal Bracket Tree Propagation Flow
-            if (t.stage === STAGES.FINAL) return; // Reached Finals limits
-
             const currentRoundLabel = t.stage;
             const roundMatches = matchesArr.filter(m => m.stage === currentRoundLabel);
             const allRoundFinished = roundMatches.every(m => m.status === "Finished");
             
-            if (!allRoundFinished || roundMatches.length === 0) return;
+            if (!allRoundFinished) return;
 
             let nextSize = 0;
             let nextLabel = "";
@@ -831,8 +740,9 @@
             if (currentRoundLabel === STAGES.R16) { nextSize = 8; nextLabel = STAGES.QUARTERS; }
             else if (currentRoundLabel === STAGES.QUARTERS) { nextSize = 4; nextLabel = STAGES.SEMIS; }
             else if (currentRoundLabel === STAGES.SEMIS) { nextSize = 2; nextLabel = STAGES.FINAL; }
-            else return; 
+            else return; // Reached Finals / 3rd Place
 
+            // Inject slots for upcoming round structure if missing
             const nextRoundExists = matchesArr.some(m => m.stage === nextLabel);
             if (!nextRoundExists) {
                 for (let i = 0; i < nextSize; i += 2) {
@@ -847,6 +757,7 @@
                 }
             }
 
+            // Propagate winners down the structural tree
             roundMatches.forEach(m => {
                 let s1 = parseInt(m.s1, 10);
                 let s2 = parseInt(m.s2, 10);
@@ -867,7 +778,7 @@
                     loser = (winner === m.t1) ? m.t2 : m.t1;
                 }
 
-                if (!winner) return; 
+                if (!winner) return; // Prevent advancing if tie unresolved
                 
                 let targetKoIdx = Math.floor(m.koIndex / 2);
                 let targetSlotPosition = (m.koIndex % 2 === 0) ? 't1' : 't2';
@@ -877,6 +788,7 @@
                     nextMatch[targetSlotPosition] = winner;
                 }
 
+                // If currently finishing Semis, move losers to the 3rd place match layout
                 if (currentRoundLabel === STAGES.SEMIS && t.includeLosersFinal) {
                     let losersMatch = t.matches.find(x => x.stage === STAGES.THIRD_PLACE);
                     if (losersMatch) {
@@ -897,6 +809,7 @@
                 stats[t.name] = { name: t.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
             });
 
+            // Populate base metrics
             matches.forEach(m => {
                 if (m.s1 === "" || m.s2 === "") return;
                 if (groupId && assignments && (assignments[m.t1] !== groupId || assignments[m.t2] !== groupId)) return;
@@ -939,6 +852,7 @@
                 list = list.filter(t => assignments[t.name] === groupId);
             }
 
+            // Head-to-head comparison logic function
             const getH2HPoints = (teamA, teamB) => {
                 let pointsA = 0;
                 matches.forEach(m => {
@@ -958,46 +872,28 @@
                 return pointsA;
             };
 
+            // High Precision FIFA/UEFA Sorting Hierarchy
             return list.sort((a, b) => {
+                // 1. Points
                 if (b.pts !== a.pts) return b.pts - a.pts;
+                // 2. Goal Difference
                 if (b.gd !== a.gd) return b.gd - a.gd;
+                // 3. Goals Scored
                 if (b.gf !== a.gf) return b.gf - a.gf;
+                // 4. Head-to-Head points
                 const h2hDiff = getH2HPoints(b.name, a.name) - getH2HPoints(a.name, b.name);
                 if (h2hDiff !== 0) return h2hDiff;
+                // 5. Alphabetical fallback
                 return a.name.localeCompare(b.name);
             });
         }
 
         // ---------- PRESENTATION RENDERERS (UI LAYERS) ----------
-        function renderTournamentStats(t) {
-            const matchesList = t.matches ? Object.values(t.matches) : [];
-            const finishedMatches = matchesList.filter(m => m.status === "Finished");
-            const totalGoals = matchesList.reduce((sum, m) => {
-                return sum + (parseInt(m.s1) || 0) + (parseInt(m.s2) || 0);
-            }, 0);
-            
-            return `
-                <div class="grid grid-cols-3 gap-3 mb-6 p-4 bg-gradient-to-r from-emerald-500/5 to-cyan-500/5 dark:from-emerald-500/10 dark:to-cyan-500/10 border border-emerald-500/20 rounded-3xl shadow-sm">
-                    <div class="text-center">
-                        <p class="text-2xl font-black text-emerald-500">${finishedMatches.length}/${matchesList.length}</p>
-                        <p class="text-[8px] uppercase font-black text-slate-400">Matches Done</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-2xl font-black text-cyan-500">${totalGoals}</p>
-                        <p class="text-[8px] uppercase font-black text-slate-400">Total Goals</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-2xl font-black text-purple-500">${Object.keys(t.teams || {}).length}</p>
-                        <p class="text-[8px] uppercase font-black text-slate-400">Teams</p>
-                    </div>
-                </div>
-            `;
-        }
-
         function renderTournamentList() {
             const listEl = document.getElementById('tournament-list');
             listEl.innerHTML = '';
 
+            // Apply Arena Search Filter
             let filteredTournaments = tournaments;
             if (arenaSearchQuery.trim() !== '') {
                 const query = arenaSearchQuery.toLowerCase().trim();
@@ -1027,7 +923,6 @@
                     <div class="flex items-center gap-2">
                         <span class="text-[9px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md uppercase">${escapeHtml(t.format)}</span>
                         ${t.prioritySeeding ? `<span class="text-[9px] font-black tracking-widest text-indigo-500 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-md uppercase">Seeded</span>` : ''}
-                        ${t.champion ? `<span class="text-[9px] font-black tracking-widest text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md uppercase border border-amber-500/20"><i data-lucide="trophy" class="w-2.5 h-2.5 inline mr-1 -mt-0.5"></i>Completed</span>` : ''}
                     </div>
                     <h4 class="font-black text-lg tracking-tight uppercase mt-3 text-slate-800 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors">${escapeHtml(t.name)}</h4>
                     <div class="flex items-center gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -1091,6 +986,7 @@
                 ? `<i data-lucide="eye" class="w-3.5 h-3.5"></i> Spectator` 
                 : `<i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Arena Host`;
 
+            // Display seating option badge in header
             const prioBadge = document.getElementById('active-priority-badge');
             if (t.prioritySeeding) {
                 prioBadge.classList.remove('hidden');
@@ -1105,13 +1001,7 @@
                         <div class="flex gap-2">
                             <input id="team-input-name" placeholder="Enter Registration Tag..." class="flex-1 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none text-slate-900 dark:text-white">
                             <button id="add-team-btn" class="bg-emerald-500 text-white dark:text-slate-950 px-6 rounded-2xl font-black text-xs uppercase hover:bg-emerald-400 transition-colors shadow-md">Register</button>
-                        </div>
-                        <div class="mt-4">
-                            <button id="bulk-import-btn" class="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-slate-500 text-[10px] font-black uppercase hover:border-emerald-500 hover:text-emerald-500 transition-colors">
-                                <i data-lucide="upload" class="w-4 h-4 inline mr-2 -mt-0.5"></i> Bulk Import Teams
-                            </button>
-                        </div>
-                        ` : ''}
+                        </div>` : ''}
                         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/50 rounded-3xl p-4 divide-y divide-slate-100 dark:divide-slate-800/60" id="team-list-box"></div>
                         ${(!t.matches || t.matches.length === 0) && !isLockedArena ? `
                         <button onclick="generateStage()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 active:scale-95 transition-all">Forge Grid Bracket</button>
@@ -1125,6 +1015,7 @@
                         let tName = nameInput.value.trim();
                         if (!tName) return;
                         
+                        // Strict Case Insensitive Registration Tag check
                         if (!t.teams) t.teams = {};
                         const normalizedInput = tName.toLowerCase();
                         const exists = Object.keys(t.teams).some(team => team.toLowerCase() === normalizedInput);
@@ -1138,10 +1029,6 @@
                         pushUpdateData(t);
                         renderTabContent();
                     };
-
-                    document.getElementById('bulk-import-btn').onclick = () => {
-                        document.getElementById('bulk-import-modal').classList.remove('hidden');
-                    };
                 }
 
                 const listGrid = document.getElementById('team-list-box');
@@ -1154,7 +1041,7 @@
                         div.className = "py-3.5 px-2 flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300";
                         div.innerHTML = `
                             <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> ${escapeHtml(tm.name)}</span>
-                            ${!isLockedArena && (!t.matches || t.matches.length === 0 || !hasActiveMatches(t)) ? `
+                            ${!isLockedArena && (!t.matches || t.matches.length === 0) ? `
                             <button class="text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors" data-delete-team="${escapeHtml(tm.name)}"><i data-lucide="x" class="w-4 h-4"></i></button>
                             ` : ''}
                         `;
@@ -1181,12 +1068,11 @@
                     return;
                 }
 
+                // Filter by match stage
                 let activeStageFilter = t.stage || STAGES.LEAGUE;
                 let stagesAvailable = [...new Set(matchesList.map(m => m.stage))];
                 
                 let filterHtml = `
-                    ${renderTournamentStats(t)}
-                    
                     <div class="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar">
                         ${stagesAvailable.map(st => `
                             <button data-stage-filter="${st}" class="px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl border transition-all whitespace-nowrap ${
@@ -1226,6 +1112,7 @@
 
                 const filterButtons = container.querySelectorAll('[data-stage-filter]');
                 
+                // Live interactive filtering of match subsets
                 const applyAllFilters = () => {
                     let subset = matchesList.filter(m => m.stage === activeStageFilter);
                     
@@ -1305,6 +1192,7 @@
                     return;
                 }
 
+                // Group structural rounds
                 let roundsOrder = [STAGES.R16, STAGES.QUARTERS, STAGES.SEMIS, STAGES.FINAL];
                 let bracketContainer = document.createElement('div');
                 bracketContainer.className = "bracket-container no-scrollbar";
@@ -1324,6 +1212,7 @@
                         let s1Val = m.s1 !== "" ? `${m.s1}` : '-';
                         let s2Val = m.s2 !== "" ? `${m.s2}` : '-';
 
+                        // Check and render shootout details
                         let p1Badge = (m.p1 !== "" && m.p1 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p1})</span>` : '';
                         let p2Badge = (m.p2 !== "" && m.p2 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p2})</span>` : '';
 
@@ -1356,6 +1245,7 @@
                     bracketContainer.appendChild(roundDiv);
                 });
 
+                // Render Losers match explicitly if requested
                 let thirdPlaceMatch = koMatches.find(m => m.stage === STAGES.THIRD_PLACE);
                 if (thirdPlaceMatch) {
                     let tpDiv = document.createElement('div');
@@ -1402,6 +1292,7 @@
                 
                 let isKo = (m.stage !== STAGES.GROUPS && m.stage !== STAGES.LEAGUE);
                 
+                // Show Shootout controls dynamically ONLY when scores are tie in a knockout stage
                 let showShootoutInput = false;
                 if (isKo && m.s1 !== "" && m.s2 !== "") {
                     let val1 = parseInt(m.s1, 10);
@@ -1411,6 +1302,7 @@
                     }
                 }
 
+                // Render dynamic status indicators
                 let statusBadge = '';
                 if (m.status === "Live") {
                     statusBadge = `<span class="bg-red-500/15 text-red-500 border border-red-500/25 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><span class="w-1 h-1 rounded-full bg-red-500 animate-pulse"></span> Live</span>`;
@@ -1420,10 +1312,6 @@
                     statusBadge = `<span class="bg-slate-100 dark:bg-slate-800 text-slate-400 border border-transparent px-2 py-0.5 rounded text-[8px] font-black uppercase">Scheduled</span>`;
                 }
                 
-                let isMatchEditable = !readOnly && m.status !== "Finished";
-                let disabledAttr = isMatchEditable ? '' : 'disabled';
-                let inputClass = `match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${!isMatchEditable ? 'opacity-60 cursor-not-allowed' : ''}`;
-
                 div.innerHTML = `
                     <div class="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <span>${m.stage} ${m.grp ? `• Pool ${m.grp}` : ''}</span>
@@ -1435,11 +1323,11 @@
                     <div class="space-y-2">
                         <div class="flex items-center justify-between gap-4">
                             <span class="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[140px]">${escapeHtml(m.t1)}</span>
-                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s1" value="${m.s1}" ${disabledAttr} class="${inputClass}">
+                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s1" value="${m.s1}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
                         </div>
                         <div class="flex items-center justify-between gap-4">
                             <span class="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[140px]">${escapeHtml(m.t2)}</span>
-                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s2" value="${m.s2}" ${disabledAttr} class="${inputClass}">
+                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s2" value="${m.s2}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
                         </div>
                         
                         <div class="shootout-container ${showShootoutInput ? '' : 'hidden'} space-y-2 pt-2 border-t border-dashed border-amber-500/20">
@@ -1447,8 +1335,8 @@
                                 <span class="text-[9px] font-black uppercase text-amber-500">Shootout Required (PKs)</span>
                             </div>
                             <div class="flex gap-2">
-                                <input type="number" min="0" placeholder="PK 1" data-match-id="${m.id}" data-score-pos="p1" value="${m.p1 || ''}" ${disabledAttr} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl ${!isMatchEditable ? 'opacity-60' : ''}">
-                                <input type="number" min="0" placeholder="PK 2" data-match-id="${m.id}" data-score-pos="p2" value="${m.p2 || ''}" ${disabledAttr} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl ${!isMatchEditable ? 'opacity-60' : ''}">
+                                <input type="number" min="0" placeholder="PK 1" data-match-id="${m.id}" data-score-pos="p1" value="${m.p1 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                                <input type="number" min="0" placeholder="PK 2" data-match-id="${m.id}" data-score-pos="p2" value="${m.p2 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
                             </div>
                         </div>
                     </div>
@@ -1465,6 +1353,7 @@
                         if (matchObj) {
                             matchObj[pos] = e.target.value;
                             
+                            // Dynamically evaluate status
                             if (matchObj.s1 === "" && matchObj.s2 === "") {
                                 matchObj.status = "Scheduled";
                             } else if (matchObj.s1 !== "" && matchObj.s2 !== "") {
@@ -1472,13 +1361,14 @@
                                 let s2 = parseInt(matchObj.s2, 10);
                                 
                                 if (s1 === s2 && (matchObj.stage !== STAGES.GROUPS && matchObj.stage !== STAGES.LEAGUE)) {
+                                    // Tie shootout logic check
                                     let p1 = matchObj.p1 !== "" ? parseInt(matchObj.p1, 10) : null;
                                     let p2 = matchObj.p2 !== "" ? parseInt(matchObj.p2, 10) : null;
                                     
                                     if (p1 !== null && p2 !== null && p1 !== p2) {
                                         matchObj.status = "Finished";
                                     } else {
-                                        matchObj.status = "Live"; 
+                                        matchObj.status = "Live"; // Unresolved draw in KO
                                     }
                                 } else {
                                     matchObj.status = "Finished";
@@ -1488,7 +1378,6 @@
                             }
                             
                             evaluateAndAdvanceKnockout(tournamentObj);
-                            checkAndDeclareChampion(tournamentObj);
                             pushUpdateData(tournamentObj);
                         }
                     };
@@ -1562,6 +1451,7 @@
             document.getElementById('active-format').innerText = tournamentObj.format;
 
             currentTab = 'teams';
+            // Reset tournament specific searches
             matchSearchQuery = '';
             matchStatusFilter = 'all';
 
@@ -1592,6 +1482,7 @@
             let teamsList = t.teams ? Object.values(t.teams) : [];
             let matchesList = t.matches ? Object.values(t.matches) : [];
 
+            // Block 1: Squad Standings Stand Table Compile
             if (t.format !== "Pure Knockout" && matchesList.length > 0) {
                 let sec = document.createElement('div');
                 sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin-bottom:8px;text-transform:uppercase;">Current Standings</h2>`;
@@ -1609,6 +1500,7 @@
                 pdfBody.appendChild(sec);
             }
 
+            // Block 2: Complete Matches Logs with PK Status details
             if (matchesList.length > 0) {
                 let sec = document.createElement('div');
                 sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin:20px 0 8px;text-transform:uppercase;">Matches Logs Records</h2>`;
@@ -1626,8 +1518,8 @@
                     grid.innerHTML += `
                         <div style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:bold;">
                             <div style="color:#64748b;font-size:9px;margin-bottom:4px;text-transform:uppercase;">${m.stage} [${m.status}]</div>
-                            <div style="display:flex;justify-content:between;"><span>${m.t1}</span><span>${s1}${p1Text}</span></div>
-                            <div style="display:flex;justify-content:between;margin-top:2px;"><span>${m.t2}</span><span>${s2}${p2Text}</span></div>
+                            <div style="display:flex;justify-content:space-between;"><span>${m.t1}</span><span>${s1}${p1Text}</span></div>
+                            <div style="display:flex;justify-content:space-between;margin-top:2px;"><span>${m.t2}</span><span>${s2}${p2Text}</span></div>
                         </div>`;
                 });
                 sec.appendChild(grid);
@@ -1660,6 +1552,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             initStorage();
 
+            // Dark Mode Controller Toggle
             const themeToggle = document.getElementById('theme-toggle');
             themeToggle.onclick = () => {
                 document.documentElement.classList.toggle('dark');
@@ -1669,19 +1562,23 @@
                 document.documentElement.classList.remove('dark');
             }
 
+            // Navigation Hub Hooks
             document.getElementById('dashboard-link').onclick = showDashboard;
             document.getElementById('back-to-dashboard').onclick = showDashboard;
 
+            // Setup Dashboard Arena Search listener
             const arenaSearchInput = document.getElementById('arena-search-input');
             arenaSearchInput.oninput = (e) => {
                 arenaSearchQuery = e.target.value;
                 renderTournamentList();
             };
 
+            // Modal Controls
             const createModal = document.getElementById('create-modal');
             document.getElementById('fab').onclick = () => createModal.classList.remove('hidden');
             document.getElementById('close-modal-btn').onclick = () => createModal.classList.add('hidden');
 
+            // Conditional layout triggers for modal config forms
             const formatSelect = document.getElementById('arena-format');
             const koWrapper = document.getElementById('knockout-teams-wrapper');
             const losersWrapper = document.getElementById('losers-final-wrapper');
@@ -1700,6 +1597,7 @@
                 }
             };
 
+            // Spawn Arena Trigger Action
             document.getElementById('create-tournament-btn').onclick = async () => {
                 const name = document.getElementById('arena-name').value.trim();
                 const format = formatSelect.value;
@@ -1734,6 +1632,7 @@
                 initRoomNavigation(newArena.id);
             };
 
+            // Gatekeeper PIN confirmation hooks
             document.getElementById('spectate-btn').onclick = () => {
                 document.getElementById('pin-modal').classList.add('hidden');
                 isReadOnlyMode = true;
@@ -1760,8 +1659,8 @@
                 }
             };
 
+            // Top-bar Action triggers
             document.getElementById('export-pdf-btn').onclick = exportPdfReport;
-            document.getElementById('export-backup-btn').onclick = exportTournamentData;
 
             document.getElementById('reset-tournament-btn').onclick = () => {
                 if (isReadOnlyMode) return;
@@ -1771,7 +1670,6 @@
                         t.matches = [];
                         t.stage = STAGES.GROUPS;
                         t.groupAssignments = {};
-                        t.champion = null;
                         await pushUpdateData(t);
                         switchTab('teams');
                         showNotification("Match schedules reset completed.");
@@ -1786,40 +1684,7 @@
                 });
             };
 
-            // Bulk Import functionality 
-            document.getElementById('cancel-bulk-btn').onclick = () => {
-                document.getElementById('bulk-import-modal').classList.add('hidden');
-                document.getElementById('bulk-teams-input').value = '';
-            };
-
-            document.getElementById('confirm-bulk-btn').onclick = () => {
-                let text = document.getElementById('bulk-teams-input').value;
-                let names = text.split('\n').map(n => n.trim()).filter(n => n);
-                const t = tournaments.find(x => x.id === activeTournamentId);
-                if (t && !isReadOnlyMode) {
-                    if (!t.teams) t.teams = {};
-                    let count = 0;
-                    names.forEach(n => {
-                        let normalized = n.toLowerCase();
-                        let exists = Object.keys(t.teams).some(team => team.toLowerCase() === normalized);
-                        if (!exists) {
-                            t.teams[n] = { name: n };
-                            count++;
-                        }
-                    });
-                    pushUpdateData(t);
-                    document.getElementById('bulk-import-modal').classList.add('hidden');
-                    document.getElementById('bulk-teams-input').value = '';
-                    renderTabContent();
-                    showNotification(`Imported ${count} new teams successfully.`);
-                }
-            };
-
-            // Champion Modal closure
-            document.getElementById('close-champion-btn').onclick = () => {
-                document.getElementById('champion-modal').classList.add('hidden');
-            };
-
+            // Setup automated UI updates on a soft cycle for relative updated-time ticks
             setInterval(() => {
                 if (activeTournamentId) {
                     const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
