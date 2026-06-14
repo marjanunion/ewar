@@ -242,852 +242,1290 @@
             <input id="entered-pin" type="password" placeholder="PIN CODE" class="w-full p-5 rounded-[2rem] bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center text-xl tracking-[0.3em] mb-8 outline-none text-slate-900 dark:text-white shadow-inner">
             <div class="flex gap-3">
                 <button id="spectate-btn" class="flex-1 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 font-black text-[10px] uppercase text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Spectate</button>
-                <button id="unlock-room-btn" class="flex-1 bg-amber-500 text-slate-900 p-4 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-amber-500/20 active:scale-95 transition-transform hover:bg-amber-400">Unlock</button>
+                <button id="unlock-room-btn" class="flex-1 bg-emerald-500 text-white dark:text-slate-950 p-4 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-400 transition-colors shadow-lg">Admin Unlock</button>
             </div>
-            <button id="cancel-pin-btn" class="mt-4 text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Cancel Return</button>
         </div>
     </div>
 
+    <div id="pdf-container" class="hidden p-8 bg-white text-slate-900 space-y-8" style="width: 800px; min-height: 1100px;">
+        <div class="border-b-4 border-emerald-500 pb-4 flex justify-between items-end">
+            <div>
+                <h1 id="pdf-title" class="text-3xl font-black italic text-emerald-600">EWAR ARENA</h1>
+                <p id="pdf-format" class="text-xs text-slate-500 font-bold uppercase tracking-widest"></p>
+            </div>
+            <p class="text-xs text-slate-400 italic">Generated Live by eWAR Engine</p>
+        </div>
+        <div id="pdf-body" class="space-y-6"></div>
+    </div>
+
     <script type="module">
-        lucide.createIcons();
-        const DOMAIN_NAME = "eWAR";
-        const API_BASE = "https://kvs-my-worker.siyadc2.workers.dev";
-        const KV_NAMESPACE = "TOURNAMENTS"; 
-        const DATA_VERSION = "v3";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        let arenas = {};
-        let activeId = null;
-        let role = 'spectator';
+        // Application State
+        let tournaments = [];
+        let activeTournamentId = null;
+        let targetedLockedId = null;
         let currentTab = 'teams';
+        let isReadOnlyMode = true; 
         
-        let pendingChanges = {};
-        let isSaving = false;
-        let saveTimeout = null;
-        let lastSyncTime = 0;
-        let syncInterval = null;
-        let isDarkMode = localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        let fbDb = null;
+        let fbAppId = 'ewar-app';
+        let currentUser = null;
 
-        const initTheme = () => {
-            if (isDarkMode) {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-            }
-        };
-        initTheme();
+        // Search Queries and Filters State (Preserved during sync)
+        let arenaSearchQuery = '';
+        let matchSearchQuery = '';
+        let matchStatusFilter = 'all';
+        let currentStageFilter = null; // Preserve stage filter between syncs
 
-        const toggleTheme = () => {
-            isDarkMode = !isDarkMode;
-            localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-            initTheme();
-        };
-        document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+        // Store input values to prevent flickering
+        let preservedInputs = new Map();
+        let isSyncing = false;
+        let lastSyncTimestamp = 0;
 
-        const createEl = (tag, className = "", innerHTML = "") => {
-            const el = document.createElement(tag);
-            el.className = className;
-            if (innerHTML) el.innerHTML = innerHTML;
-            return el;
+        // Stage Constants
+        const STAGES = {
+            GROUPS: 'Group Stage',
+            LEAGUE: 'League Stage',
+            R16: 'Round of 16',
+            QUARTERS: 'Quarterfinals',
+            SEMIS: 'Semifinals',
+            FINAL: 'Finals',
+            THIRD_PLACE: '3rd Place Match',
+            KNOCKOUT: 'Knockout Stage'
         };
 
-        const showNotification = (msg, type = 'success') => {
+        // Custom Notification Controller
+        function showNotification(msg, type = 'success') {
             const container = document.getElementById('notification-container');
-            const icons = {
-                success: '<i data-lucide="check-circle" class="w-4 h-4"></i>',
-                error: '<i data-lucide="x-circle" class="w-4 h-4"></i>',
-                info: '<i data-lucide="info" class="w-4 h-4"></i>'
-            };
-            const colors = {
-                success: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-                error: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
-                info: 'bg-cyan-50 text-cyan-600 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20'
-            };
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `p-4 rounded-2xl shadow-xl border flex items-center gap-3 animate-slide-up pointer-events-auto bg-white dark:bg-slate-900 ${
+                type === 'success' ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
+                type === 'error' ? 'border-red-500/30 text-red-600 dark:text-red-400' :
+                'border-amber-500/30 text-amber-600 dark:text-amber-400'
+            }`;
             
-            const div = createEl('div', `flex items-center gap-3 p-4 rounded-2xl border shadow-lg ${colors[type]} animate-slide-up bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm pointer-events-auto cursor-pointer`, `${icons[type]}<span class="text-xs font-bold uppercase tracking-wide flex-1">${msg}</span><i data-lucide="x" class="w-3 h-3 opacity-50 hover:opacity-100"></i>`);
-            container.appendChild(div);
-            lucide.createIcons();
+            const iconName = type === 'success' ? 'check-circle' : type === 'error' ? 'alert-octagon' : 'alert-triangle';
+            alertDiv.innerHTML = `
+                <i data-lucide="${iconName}" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-xs font-bold leading-tight uppercase tracking-wider">${msg}</p>
+            `;
+            container.appendChild(alertDiv);
+            if (window.lucide) window.lucide.createIcons();
             
-            div.addEventListener('click', () => div.remove());
-            setTimeout(() => { if (div.parentElement) div.remove(); }, 3500);
-        };
+            setTimeout(() => {
+                alertDiv.style.opacity = '0';
+                alertDiv.style.transform = 'translateY(-10px)';
+                alertDiv.style.transition = 'all 0.3s ease';
+                setTimeout(() => alertDiv.remove(), 300);
+            }, 3500);
+        }
 
-        const showConfirm = (title, message, onConfirm) => {
+        // Custom Confirmation dialog controller
+        function triggerConfirm(title, message, onProceed) {
             const modal = document.getElementById('confirm-modal');
             document.getElementById('confirm-title').innerText = title;
             document.getElementById('confirm-message').innerText = message;
             modal.classList.remove('hidden');
-            
-            const confirmBtn = document.getElementById('confirm-proceed');
-            const cancelBtn = document.getElementById('confirm-cancel');
-            
-            const cleanUp = () => {
+
+            const btnCancel = document.getElementById('confirm-cancel');
+            const btnProceed = document.getElementById('confirm-proceed');
+
+            const cleanUpListeners = () => {
+                btnCancel.onclick = null;
+                btnProceed.onclick = null;
                 modal.classList.add('hidden');
-                confirmBtn.removeEventListener('click', handleConfirm);
-                cancelBtn.removeEventListener('click', cleanUp);
             };
-            
-            const handleConfirm = () => {
-                onConfirm();
-                cleanUp();
+
+            btnCancel.onclick = cleanUpListeners;
+            btnProceed.onclick = () => {
+                onProceed();
+                cleanUpListeners();
             };
-            
-            confirmBtn.addEventListener('click', handleConfirm);
-            cancelBtn.addEventListener('click', cleanUp);
+        }
+
+        const escapeHtml = (str) => {
+            if (!str) return '';
+            return String(str).replace(/[&<>'"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[m]));
         };
 
-        const setSyncStatus = (status, text) => {
-            const dot = document.getElementById('sync-dot');
-            const textEl = document.getElementById('sync-text');
-            const arenaLastUpdate = document.getElementById('arena-last-updated');
-            textEl.innerText = text;
-            
-            dot.className = 'w-1.5 h-1.5 rounded-full';
-            if (status === 'syncing') {
-                dot.classList.add('bg-amber-500', 'animate-pulse');
-            } else if (status === 'synced') {
-                dot.classList.add('bg-emerald-500');
-                if (activeId && arenas[activeId] && arenas[activeId].updatedAt) {
-                    const date = new Date(arenas[activeId].updatedAt);
-                    const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    arenaLastUpdate.innerText = `Updated ${timeStr}`;
-                } else {
-                    arenaLastUpdate.innerText = `Synced`;
-                }
-            } else if (status === 'error') {
-                dot.classList.add('bg-red-500');
-                arenaLastUpdate.innerText = `Sync Error`;
-            } else if (status === 'offline') {
-                dot.classList.add('bg-slate-400');
-                arenaLastUpdate.innerText = `Offline`;
+        const refreshIcons = () => { 
+            if (window.lucide) setTimeout(() => window.lucide.createIcons(), 10); 
+        };
+        
+        const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2));
+        
+        const fisherYates = (array) => {
+            let m = array.length, t, i;
+            while (m) {
+                i = Math.floor(Math.random() * m--);
+                t = array[m]; array[m] = array[i]; array[i] = t;
             }
+            return array;
         };
 
-        const fetchArenas = async (silent = false) => {
-            if (!silent) setSyncStatus('syncing', 'Connecting...');
-            try {
-                const req = await fetch(`${API_BASE}?namespace=${KV_NAMESPACE}`);
-                if (!req.ok) throw new Error("API Error");
-                const res = await req.json();
-                
-                const remoteArenas = {};
-                res.keys.forEach(k => {
-                    const id = k.name.replace(`${DATA_VERSION}:`, '');
-                    if (k.name.startsWith(`${DATA_VERSION}:`)) {
-                        try {
-                            const data = k.metadata ? (typeof k.metadata === 'string' ? JSON.parse(k.metadata) : k.metadata) : null;
-                            if (data) remoteArenas[id] = data;
-                        } catch (e) { console.error("Error parsing metadata for", id, e); }
+        // Save current input values before re-render
+        function preserveInputValues() {
+            preservedInputs.clear();
+            document.querySelectorAll('.match-score-input, #match-search-input, #match-status-filter').forEach(input => {
+                if (input.id === 'match-search-input') {
+                    preservedInputs.set('search', input.value);
+                } else if (input.id === 'match-status-filter') {
+                    preservedInputs.set('status', input.value);
+                } else if (input.classList.contains('match-score-input')) {
+                    const matchId = input.getAttribute('data-match-id');
+                    const pos = input.getAttribute('data-score-pos');
+                    if (matchId && pos) {
+                        preservedInputs.set(`${matchId}-${pos}`, input.value);
+                    }
+                }
+            });
+        }
+
+        // Restore preserved input values after re-render
+        function restoreInputValues() {
+            setTimeout(() => {
+                document.querySelectorAll('.match-score-input, #match-search-input, #match-status-filter').forEach(input => {
+                    if (input.id === 'match-search-input' && preservedInputs.has('search')) {
+                        input.value = preservedInputs.get('search');
+                    } else if (input.id === 'match-status-filter' && preservedInputs.has('status')) {
+                        input.value = preservedInputs.get('status');
+                    } else if (input.classList.contains('match-score-input')) {
+                        const matchId = input.getAttribute('data-match-id');
+                        const pos = input.getAttribute('data-score-pos');
+                        const key = `${matchId}-${pos}`;
+                        if (preservedInputs.has(key)) {
+                            input.value = preservedInputs.get(key);
+                        }
                     }
                 });
-                
-                if (activeId && remoteArenas[activeId] && remoteArenas[activeId].updatedAt > (arenas[activeId]?.updatedAt || 0)) {
-                    await fetchActiveArenaFull(activeId);
-                } else {
-                    arenas = { ...arenas, ...remoteArenas };
-                    if (!activeId) renderList();
-                }
-                setSyncStatus('synced', 'Live');
-            } catch (e) {
-                console.error("Fetch list error:", e);
-                if (!silent) setSyncStatus('error', 'Offline');
-            }
-        };
+                refreshIcons();
+            }, 50);
+        }
 
-        const fetchActiveArenaFull = async (id) => {
+        // ---------- CLOUD STORAGE ENGINE ----------
+        async function initStorage() {
             try {
-                const req = await fetch(`${API_BASE}?namespace=${KV_NAMESPACE}&key=${DATA_VERSION}:${id}`);
-                if (!req.ok) throw new Error("Failed to load full arena");
-                const data = await req.json();
-                
-                if (Object.keys(pendingChanges).length > 0 && arenas[id] && data.updatedAt > arenas[id].updatedAt) {
-                    showNotification("Remote updates detected. Resolving conflict.", "info");
-                }
-                
-                arenas[id] = { ...arenas[id], ...data };
-                lastSyncTime = Date.now();
-                
-                if (activeId === id) {
-                    renderHeader();
-                    if (currentTab === 'teams') renderTeams();
-                    else if (currentTab === 'standings') renderStandings();
-                    else if (currentTab === 'bracket') renderBracketView();
-                }
-            } catch(e) {
-                console.error("Fetch full arena error", e);
-            }
-        };
+                const firebaseConfig = {
+                    apiKey: "AIzaSyBk1d837ftOEGco6B5bP0iTQwyKLw7VpeU",
+                    authDomain: "ewar-fa1db.firebaseapp.com",
+                    databaseURL: "https://ewar-fa1db-default-rtdb.firebaseio.com",
+                    projectId: "ewar-fa1db",
+                    storageBucket: "ewar-fa1db.firebasestorage.app",
+                    messagingSenderId: "287555570705",
+                    appId: "1:287555570705:web:bfbd53a520cf7fb8daf5b0",
+                    measurementId: "G-3P3RYNZXL0"
+                };
 
-        const queueSave = (updateObj) => {
-            if (role !== 'admin') return;
-            arenas[activeId] = { ...arenas[activeId], ...updateObj, updatedAt: Date.now() };
-            pendingChanges = { ...pendingChanges, ...updateObj };
-            
-            setSyncStatus('syncing', 'Saving...');
-            
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(flushSave, 800);
-            
-            renderHeader();
-        };
+                const app = initializeApp(firebaseConfig);
+                const analytics = getAnalytics(app);
+                const auth = getAuth(app);
+                
+                fbDb = getFirestore(app);
+                fbAppId = 'ewar-app';
 
-        const flushSave = async () => {
-            if (Object.keys(pendingChanges).length === 0 || !activeId || isSaving) return;
-            isSaving = true;
-            
-            const dataToSave = { ...arenas[activeId] };
-            
-            try {
-                await fetch(`${API_BASE}?namespace=${KV_NAMESPACE}&key=${DATA_VERSION}:${activeId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dataToSave)
+                await signInAnonymously(auth);
+                
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (!currentUser) return;
+
+                    const tourneyRef = collection(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments');
+                    
+                    onSnapshot(tourneyRef, (snapshot) => {
+                        // Preserve input values before sync re-render
+                        preserveInputValues();
+                        
+                        tournaments = snapshot.docs.map(d => d.data());
+                        
+                        document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                        document.getElementById('sync-text').innerText = "Live Engine Active";
+                        lastSyncTimestamp = Date.now();
+
+                        renderTournamentList();
+                        
+                        if (activeTournamentId) {
+                            const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
+                            if (!currentActiveT) {
+                                showDashboard(); 
+                            } else {
+                                const activeEl = document.activeElement;
+                                const isInputFocused = activeEl && activeEl.tagName === 'INPUT' && 
+                                    (activeEl.classList.contains('match-score-input') || 
+                                     activeEl.id === 'match-search-input' || 
+                                     activeEl.id === 'match-status-filter');
+                                
+                                // Only re-render if not typing in an input
+                                if (!isInputFocused && !isSyncing) {
+                                    isSyncing = true;
+                                    renderTabsNav(); 
+                                    renderTabContent();
+                                    updateLastUpdatedLabel(currentActiveT.updatedAt);
+                                    // Restore input values after render
+                                    restoreInputValues();
+                                    isSyncing = false;
+                                }
+                            }
+                        }
+                    }, (err) => {
+                        console.error("Firebase sync error:", err);
+                        document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-red-500";
+                        document.getElementById('sync-text').innerText = "Sync Failed";
+                    });
                 });
-                pendingChanges = {};
-                setSyncStatus('synced', 'Live');
             } catch (e) {
-                showNotification("Save failed. Will retry.", "error");
-                setSyncStatus('error', 'Sync Failed');
-            } finally {
-                isSaving = false;
-                if (Object.keys(pendingChanges).length > 0) {
-                    saveTimeout = setTimeout(flushSave, 1500);
+                console.warn("Operating local storage sync engine.", e);
+                document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-slate-500";
+                document.getElementById('sync-text').innerText = "Local Mode";
+                
+                const localData = localStorage.getItem('ewar_tournaments');
+                if (localData) tournaments = JSON.parse(localData);
+                renderTournamentList();
+            }
+        }
+
+        async function pushUpdateData(tournamentObj) {
+            tournamentObj.updatedAt = Date.now();
+            if (fbDb && currentUser) {
+                try {
+                    await setDoc(doc(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments', tournamentObj.id), tournamentObj);
+                } catch(e) { console.error("Save error:", e); }
+            } else {
+                const idx = tournaments.findIndex(x => x.id === tournamentObj.id);
+                if (idx !== -1) tournaments[idx] = tournamentObj;
+                else tournaments.push(tournamentObj);
+                localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
+                renderTournamentList();
+                renderTabContent();
+                updateLastUpdatedLabel(tournamentObj.updatedAt);
+            }
+        }
+
+        async function deleteTournamentData(id) {
+            if (fbDb && currentUser) {
+                try { 
+                    await deleteDoc(doc(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments', id)); 
+                    showNotification("Arena Deleted Successfully");
+                } catch(e) { console.error("Delete error:", e); }
+            } else {
+                tournaments = tournaments.filter(x => x.id !== id);
+                localStorage.setItem('ewar_tournaments', JSON.stringify(tournaments));
+                showNotification("Arena Deleted Locally");
+                renderTournamentList();
+                showDashboard();
+            }
+        }
+
+        function updateLastUpdatedLabel(timestamp) {
+            const label = document.getElementById('arena-last-updated');
+            if (!label) return;
+            if (!timestamp) {
+                label.innerText = "Updated just now";
+                return;
+            }
+            const secondsAgo = Math.floor((Date.now() - timestamp) / 1000);
+            if (secondsAgo < 5) label.innerText = "Synced just now";
+            else if (secondsAgo < 60) label.innerText = `Synced ${secondsAgo}s ago`;
+            else label.innerText = `Synced ${Math.floor(secondsAgo / 60)}m ago`;
+        }
+
+        // ---------- BRACKET GENERATION ENGINE ----------
+        window.generateStage = async function() {
+            if (isReadOnlyMode) return;
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
+            
+            const teamList = t.teams ? Object.values(t.teams) : [];
+            if (teamList.length < 2) {
+                return showNotification("Need at least 2 teams to generate matches.", "warning");
+            }
+
+            const matches = [];
+            const teams = fisherYates([...teamList]);
+
+            if (t.format === "Pure Knockout") {
+                const size = parseInt(t.koCount || 4, 10);
+                if (teams.length < size) {
+                    return showNotification(`Enrolled teams (${teams.length}) is less than bracket size (${size}).`, "warning");
+                }
+                const bracketTeams = teams.slice(0, size);
+                buildKnockoutRound(matches, bracketTeams, size, t.includeLosersFinal);
+                t.stage = labelForKoSize(size);
+            } 
+            else if (t.format.includes('Groups')) {
+                if (teamList.length < 4) {
+                    return showNotification("Groups require at least 4 teams.", "warning");
+                }
+                let remaining = [...teams];
+                let groupIdx = 0;
+                let groupCount = Math.min(Math.floor(teamList.length / 3), 4);
+                if (groupCount < 2) groupCount = 2;
+                const teamsPerGroup = Math.ceil(teamList.length / groupCount);
+                const groupAssignments = {};
+
+                while (remaining.length > 0 && groupIdx < groupCount) {
+                    groupIdx++;
+                    const group = remaining.splice(0, Math.min(teamsPerGroup, remaining.length));
+                    group.forEach(team => groupAssignments[team.name] = groupIdx);
+
+                    for (let i = 0; i < group.length; i++) {
+                        for (let j = i + 1; j < group.length; j++) {
+                            matches.push({ 
+                                id: generateUUID(), 
+                                t1: group[i].name, 
+                                t2: group[j].name, 
+                                s1: "", 
+                                s2: "", 
+                                stage: STAGES.GROUPS, 
+                                grp: groupIdx,
+                                status: "Scheduled"
+                            });
+                        }
+                    }
+                }
+                t.groupAssignments = groupAssignments;
+                t.stage = STAGES.GROUPS;
+            } 
+            else {
+                const legs = t.format.includes('2 Legs') ? 2 : 1;
+                for (let i = 0; i < teams.length; i++) {
+                    for (let j = i + 1; j < teams.length; j++) {
+                        for (let l = 0; l < legs; l++) {
+                            matches.push({ 
+                                id: generateUUID(), 
+                                t1: teams[i].name, 
+                                t2: teams[j].name, 
+                                s1: "", 
+                                s2: "", 
+                                stage: STAGES.LEAGUE,
+                                status: "Scheduled"
+                            });
+                        }
+                    }
+                }
+                t.stage = STAGES.LEAGUE;
+            }
+
+            t.matches = matches;
+            await pushUpdateData(t);
+            switchTab('matches');
+            showNotification("Matches Draw Completed!");
+        }
+
+        function labelForKoSize(size) {
+            if (size === 2) return STAGES.FINAL;
+            if (size === 4) return STAGES.SEMIS;
+            if (size === 8) return STAGES.QUARTERS;
+            return STAGES.R16;
+        }
+
+        function buildKnockoutRound(matches, bracketTeams, size, includeLosers) {
+            let label = labelForKoSize(size);
+            for (let i = 0; i < size; i += 2) {
+                matches.push({
+                    id: generateUUID(),
+                    t1: bracketTeams[i] ? bracketTeams[i].name || bracketTeams[i] : "TBD",
+                    t2: bracketTeams[i+1] ? bracketTeams[i+1].name || bracketTeams[i+1] : "TBD",
+                    s1: "", s2: "", p1: "", p2: "", 
+                    stage: label, koIndex: i / 2, totalKoSlots: size,
+                    status: "Scheduled"
+                });
+            }
+            if (size === 4 && includeLosers) {
+                matches.push({ 
+                    id: generateUUID(), 
+                    t1: "TBD", 
+                    t2: "TBD", 
+                    s1: "", s2: "", p1: "", p2: "", 
+                    stage: STAGES.THIRD_PLACE, 
+                    koIndex: 99, 
+                    totalKoSlots: 4,
+                    status: "Scheduled"
+                });
+            }
+        }
+
+        // ---------- AUTO-ADVANCE EVALUATOR ENGINE ----------
+        function evaluateAndAdvanceKnockout(t) {
+            if (isReadOnlyMode || !t || !t.matches || t.matches.length === 0 || t.format === "League Table (1 Leg)" || t.format === "League Table (2 Legs)") return;
+
+            const matchesArr = Object.values(t.matches);
+            const size = parseInt(t.koCount || 4, 10);
+            
+            if (t.stage === STAGES.GROUPS || t.stage === STAGES.LEAGUE) {
+                const allFinished = matchesArr.every(m => (m.stage === STAGES.GROUPS || m.stage === STAGES.LEAGUE) ? (m.s1 !== "" && m.s2 !== "") : true);
+                if (!allFinished) return;
+
+                let qualifiedTeams = [];
+                const teamsList = Object.values(t.teams || {});
+
+                if (t.stage === STAGES.GROUPS) {
+                    const groupAssignments = t.groupAssignments || {};
+                    const groups = [...new Set(Object.values(groupAssignments))].sort();
+                    
+                    let groupWinners = [];
+                    let groupRunnersUp = [];
+                    let groupThirds = [];
+
+                    groups.forEach(gId => {
+                        const sortedGroup = calculateStats(teamsList, matchesArr, gId, groupAssignments);
+                        if (sortedGroup[0]) groupWinners.push(sortedGroup[0]);
+                        if (sortedGroup[1]) groupRunnersUp.push(sortedGroup[1]);
+                        if (sortedGroup[2]) groupThirds.push(sortedGroup[2]);
+                    });
+
+                    groupWinners.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+                    groupRunnersUp.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+                    groupThirds.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+
+                    if (size === 2) {
+                        qualifiedTeams = groupWinners.slice(0, 2);
+                    } else if (size === 4) {
+                        if (groups.length === 2) {
+                            qualifiedTeams = [groupWinners[0], groupRunnersUp[0], groupWinners[1], groupRunnersUp[1]];
+                        } else {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp].slice(0, 4);
+                        }
+                    } else if (size === 8) {
+                        if (groups.length === 4) {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp];
+                        } else if (groups.length === 2) {
+                            qualifiedTeams = [
+                                groupWinners[0], groupRunnersUp[0], groupThirds[0], 
+                                groupWinners[1], groupRunnersUp[1], groupThirds[1]
+                            ].slice(0, 8);
+                        } else {
+                            qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 8);
+                        }
+                    } else {
+                        qualifiedTeams = [...groupWinners, ...groupRunnersUp, ...groupThirds].slice(0, 16);
+                    }
+
+                    while (qualifiedTeams.length < size) {
+                        qualifiedTeams.push({ name: "TBD" });
+                    }
+
+                    if (t.prioritySeeding && qualifiedTeams.length === size && groups.length > 1) {
+                        const half = size / 2;
+                        let potA = qualifiedTeams.slice(0, half);
+                        let potB = qualifiedTeams.slice(half);
+                        potB = fisherYates([...potB]);
+                        
+                        let finalPairs = [];
+                        for (let i = 0; i < half; i++) {
+                            const seededTeam = potA[i];
+                            let partnerIdx = -1;
+                            
+                            for (let j = 0; j < potB.length; j++) {
+                                const seededGrp = groupAssignments[seededTeam.name];
+                                const unseededGrp = groupAssignments[potB[j].name];
+                                if (!seededGrp || !unseededGrp || seededGrp !== unseededGrp) {
+                                    partnerIdx = j;
+                                    break;
+                                }
+                            }
+                            
+                            if (partnerIdx === -1) partnerIdx = 0;
+                            
+                            const matchedPartner = potB.splice(partnerIdx, 1)[0];
+                            finalPairs.push(seededTeam);
+                            finalPairs.push(matchedPartner);
+                        }
+                        
+                        buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
+                    } else {
+                        let sortedSeeding = [...qualifiedTeams];
+                        let finalPairs = [];
+                        while(sortedSeeding.length > 0) {
+                            finalPairs.push(sortedSeeding.shift());
+                            if(sortedSeeding.length > 0) finalPairs.push(sortedSeeding.pop());
+                        }
+                        buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
+                    }
+                } else {
+                    const sorted = calculateStats(teamsList, matchesArr);
+                    qualifiedTeams = sorted.slice(0, size);
+                    while (qualifiedTeams.length < size) {
+                        qualifiedTeams.push({ name: "TBD" });
+                    }
+
+                    let finalPairs = [];
+                    let sortedSeeding = [...qualifiedTeams];
+                    while (sortedSeeding.length > 0) {
+                        finalPairs.push(sortedSeeding.shift());
+                        if (sortedSeeding.length > 0) finalPairs.push(sortedSeeding.pop());
+                    }
+                    buildKnockoutRound(t.matches, finalPairs, size, t.includeLosersFinal);
+                }
+
+                t.stage = labelForKoSize(size);
+                showNotification("Qualification finalized! Seeding matches forged.");
+                return;
+            }
+
+            const currentRoundLabel = t.stage;
+            const roundMatches = matchesArr.filter(m => m.stage === currentRoundLabel);
+            const allRoundFinished = roundMatches.every(m => m.status === "Finished");
+            
+            if (!allRoundFinished) return;
+
+            let nextSize = 0;
+            let nextLabel = "";
+
+            if (currentRoundLabel === STAGES.R16) { nextSize = 8; nextLabel = STAGES.QUARTERS; }
+            else if (currentRoundLabel === STAGES.QUARTERS) { nextSize = 4; nextLabel = STAGES.SEMIS; }
+            else if (currentRoundLabel === STAGES.SEMIS) { nextSize = 2; nextLabel = STAGES.FINAL; }
+            else return;
+
+            const nextRoundExists = matchesArr.some(m => m.stage === nextLabel);
+            if (!nextRoundExists) {
+                for (let i = 0; i < nextSize; i += 2) {
+                    t.matches.push({
+                        id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "",
+                        stage: nextLabel, koIndex: i / 2, totalKoSlots: nextSize,
+                        status: "Scheduled"
+                    });
+                }
+                if (nextSize === 2 && t.includeLosersFinal && !matchesArr.some(m => m.stage === STAGES.THIRD_PLACE)) {
+                    t.matches.push({ id: generateUUID(), t1: "TBD", t2: "TBD", s1: "", s2: "", p1: "", p2: "", stage: STAGES.THIRD_PLACE, koIndex: 99, totalKoSlots: 4, status: "Scheduled" });
                 }
             }
-        };
 
-        const generateGroups = (teamsArray) => {
-            const t = [...teamsArray];
-            for(let i=t.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [t[i], t[j]]=[t[j], t[i]]; }
-            const groups = { A: [], B: [], C: [], D: [] };
-            const limit = Math.ceil(t.length/4);
-            const gNames = ['A','B','C','D'];
-            t.forEach((team, idx) => {
-                const targetG = gNames[idx % 4];
-                groups[targetG].push(team.id);
+            roundMatches.forEach(m => {
+                let s1 = parseInt(m.s1, 10);
+                let s2 = parseInt(m.s2, 10);
+                let p1 = m.p1 !== "" ? parseInt(m.p1, 10) : null;
+                let p2 = m.p2 !== "" ? parseInt(m.p2, 10) : null;
+                
+                let winner = "";
+                let loser = "";
+
+                if (s1 > s2) {
+                    winner = m.t1;
+                    loser = m.t2;
+                } else if (s2 > s1) {
+                    winner = m.t2;
+                    loser = m.t1;
+                } else if (p1 !== null && p2 !== null) {
+                    winner = (p1 > p2) ? m.t1 : m.t2;
+                    loser = (winner === m.t1) ? m.t2 : m.t1;
+                }
+
+                if (!winner) return;
+                
+                let targetKoIdx = Math.floor(m.koIndex / 2);
+                let targetSlotPosition = (m.koIndex % 2 === 0) ? 't1' : 't2';
+
+                let nextMatch = t.matches.find(x => x.stage === nextLabel && x.koIndex === targetKoIdx);
+                if (nextMatch) {
+                    nextMatch[targetSlotPosition] = winner;
+                }
+
+                if (currentRoundLabel === STAGES.SEMIS && t.includeLosersFinal) {
+                    let losersMatch = t.matches.find(x => x.stage === STAGES.THIRD_PLACE);
+                    if (losersMatch) {
+                        let loserSlot = (m.koIndex === 0) ? 't1' : 't2';
+                        losersMatch[loserSlot] = loser;
+                    }
+                }
             });
-            for(let g in groups) { if(groups[g].length === 0) delete groups[g]; }
-            return groups;
-        };
 
-        const initBracket = (koCount, isGroupsOrLeague) => {
-            const b = { finals: [ {id:'F1', t1:null, t2:null, s1:'', s2:'', p1:'', p2:'', isLosersFinal: false} ] };
-            if (koCount >= 4) b.semis = Array.from({length: 2}, (_, i) => ({id:`S${i+1}`, t1:null, t2:null, s1:'', s2:'', p1:'', p2:''}));
-            if (koCount >= 8) b.quarters = Array.from({length: 4}, (_, i) => ({id:`Q${i+1}`, t1:null, t2:null, s1:'', s2:'', p1:'', p2:''}));
-            if (koCount >= 16) b.ro16 = Array.from({length: 8}, (_, i) => ({id:`R${i+1}`, t1:null, t2:null, s1:'', s2:'', p1:'', p2:''}));
-            return b;
-        };
+            t.stage = nextLabel;
+            showNotification(`All matches complete! Advancing to ${nextLabel}.`);
+        }
 
-        const renderList = () => {
-            const list = document.getElementById('tournament-list');
-            list.innerHTML = "";
-            const search = document.getElementById('arena-search-input').value.toLowerCase();
-            
-            const sorted = Object.values(arenas).sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-            
-            sorted.forEach(a => {
-                if (search && !a.name.toLowerCase().includes(search) && !a.format.toLowerCase().includes(search)) return;
+        // ---------- COMPUTE SYSTEM STANDINGS ----------
+        function calculateStats(teams, matches, groupId = null, assignments = null) {
+            const stats = {};
+            teams.forEach(t => {
+                stats[t.name] = { name: t.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+            });
+
+            matches.forEach(m => {
+                if (m.s1 === "" || m.s2 === "") return;
+                if (groupId && assignments && (assignments[m.t1] !== groupId || assignments[m.t2] !== groupId)) return;
+
+                let s1 = parseInt(m.s1, 10);
+                let s2 = parseInt(m.s2, 10);
+
+                if (!stats[m.t1]) stats[m.t1] = { name: m.t1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+                if (!stats[m.t2]) stats[m.t2] = { name: m.t2, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+
+                stats[m.t1].p++;
+                stats[m.t2].p++;
+                stats[m.t1].gf += s1;
+                stats[m.t1].ga += s2;
+                stats[m.t2].gf += s2;
+                stats[m.t2].ga += s1;
+
+                if (s1 > s2) {
+                    stats[m.t1].w++;
+                    stats[m.t1].pts += 3;
+                    stats[m.t2].l++;
+                } else if (s2 > s1) {
+                    stats[m.t2].w++;
+                    stats[m.t2].pts += 3;
+                    stats[m.t1].l++;
+                } else {
+                    stats[m.t1].d++;
+                    stats[m.t2].d++;
+                    stats[m.t1].pts += 1;
+                    stats[m.t2].pts += 1;
+                }
+            });
+
+            Object.keys(stats).forEach(k => {
+                stats[k].gd = stats[k].gf - stats[k].ga;
+            });
+
+            let list = Object.values(stats);
+            if (groupId && assignments) {
+                list = list.filter(t => assignments[t.name] === groupId);
+            }
+
+            const getH2HPoints = (teamA, teamB) => {
+                let pointsA = 0;
+                matches.forEach(m => {
+                    if (m.s1 === "" || m.s2 === "") return;
+                    if ((m.t1 === teamA && m.t2 === teamB) || (m.t1 === teamB && m.t2 === teamA)) {
+                        let s1 = parseInt(m.s1, 10);
+                        let s2 = parseInt(m.s2, 10);
+                        if (m.t1 === teamA) {
+                            if (s1 > s2) pointsA += 3;
+                            else if (s1 === s2) pointsA += 1;
+                        } else {
+                            if (s2 > s1) pointsA += 3;
+                            else if (s2 === s1) pointsA += 1;
+                        }
+                    }
+                });
+                return pointsA;
+            };
+
+            return list.sort((a, b) => {
+                if (b.pts !== a.pts) return b.pts - a.pts;
+                if (b.gd !== a.gd) return b.gd - a.gd;
+                if (b.gf !== a.gf) return b.gf - a.gf;
+                const h2hDiff = getH2HPoints(b.name, a.name) - getH2HPoints(a.name, b.name);
+                if (h2hDiff !== 0) return h2hDiff;
+                return a.name.localeCompare(b.name);
+            });
+        }
+
+        // ---------- PRESENTATION RENDERERS ----------
+        function renderTournamentList() {
+            const listEl = document.getElementById('tournament-list');
+            listEl.innerHTML = '';
+
+            let filteredTournaments = tournaments;
+            if (arenaSearchQuery.trim() !== '') {
+                const query = arenaSearchQuery.toLowerCase().trim();
+                filteredTournaments = tournaments.filter(t => 
+                    t.name.toLowerCase().includes(query) || 
+                    t.format.toLowerCase().includes(query)
+                );
+            }
+
+            if (filteredTournaments.length === 0) {
+                listEl.innerHTML = `
+                    <div class="col-span-full border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 text-center rounded-[2rem]">
+                        <p class="text-xs font-black uppercase text-slate-400 tracking-wider">No matching active arenas discovered.</p>
+                    </div>`;
+                return;
+            }
+
+            filteredTournaments.forEach(t => {
+                let card = document.createElement('div');
+                card.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] hover:border-emerald-500 dark:hover:border-emerald-400 cursor-pointer transition-all shadow-md group relative overflow-hidden";
                 
-                const card = createEl('div', 'p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 cursor-pointer shadow-sm hover:shadow-lg dark:hover:shadow-emerald-500/10 hover:border-emerald-500/30 transition-all group relative overflow-hidden');
-                
-                const timeStr = a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : 'New';
+                let matchesCount = t.matches ? Object.keys(t.matches).length : 0;
+                let teamsCount = t.teams ? Object.keys(t.teams).length : 0;
                 
                 card.innerHTML = `
-                    <div class="absolute top-0 left-0 w-1 h-full bg-slate-200 dark:bg-slate-800 group-hover:bg-emerald-500 transition-colors"></div>
-                    <div class="flex justify-between items-start mb-3 ml-2">
-                        <div>
-                            <h3 class="font-black text-lg tracking-tight text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors">${a.name}</h3>
-                            <p class="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-1">${a.format}</p>
-                        </div>
-                        <span class="text-[9px] font-black uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">${timeStr}</span>
+                    <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-500/5 to-transparent rounded-bl-full"></div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md uppercase">${escapeHtml(t.format)}</span>
+                        ${t.prioritySeeding ? `<span class="text-[9px] font-black tracking-widest text-indigo-500 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-md uppercase">Seeded</span>` : ''}
                     </div>
-                    <div class="flex gap-2 ml-2">
-                        <span class="text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-800/50 flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> ${a.teams?.length||0} Teams</span>
+                    <h4 class="font-black text-lg tracking-tight uppercase mt-3 text-slate-800 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors">${escapeHtml(t.name)}</h4>
+                    <div class="flex items-center gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span class="flex items-center gap-1"><i data-lucide="users" class="w-3.5 h-3.5 text-slate-500"></i> ${teamsCount} Enrolled</span>
+                        <span class="flex items-center gap-1"><i data-lucide="swords" class="w-3.5 h-3.5 text-slate-500"></i> ${matchesCount} Matches</span>
                     </div>
                 `;
-                card.onclick = () => attemptEnter(a.id);
-                list.appendChild(card);
+                card.onclick = () => initRoomNavigation(t.id);
+                listEl.appendChild(card);
             });
-            lucide.createIcons();
-            
-            if (sorted.length === 0) {
-                list.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400"><i data-lucide="ghost" class="w-12 h-12 mx-auto mb-3 opacity-20"></i><p class="text-xs font-bold uppercase tracking-wider">No Arenas Found</p></div>`;
-                lucide.createIcons();
-            }
-        };
+            refreshIcons();
+        }
 
-        const attemptEnter = (id) => {
-            const a = arenas[id];
-            if (!a) return;
-            if (!a.pin) { enterRoom(id, 'admin'); return; }
-            document.getElementById('pin-modal').classList.remove('hidden');
-            document.getElementById('entered-pin').value = "";
-            document.getElementById('entered-pin').focus();
-            
-            document.getElementById('unlock-room-btn').onclick = () => {
-                if(document.getElementById('entered-pin').value === a.pin) {
-                    enterRoom(id, 'admin');
-                    document.getElementById('pin-modal').classList.add('hidden');
-                } else showNotification("Access Denied. Incorrect PIN.", "error");
-            };
-            document.getElementById('spectate-btn').onclick = () => {
-                enterRoom(id, 'spectator');
-                document.getElementById('pin-modal').classList.add('hidden');
-            };
-            document.getElementById('cancel-pin-btn').onclick = () => {
-                document.getElementById('pin-modal').classList.add('hidden');
-            };
-        };
-
-        const enterRoom = async (id, assignedRole) => {
-            activeId = id; role = assignedRole;
-            document.getElementById('dashboard-view').classList.add('hidden');
-            document.getElementById('fab').classList.add('hidden');
-            document.getElementById('detail-view').classList.remove('hidden');
-            
-            const badge = document.getElementById('role-badge');
-            if(role==='admin') {
-                badge.innerHTML = `<i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Admin`;
-                badge.className = "flex items-center gap-1.5 bg-emerald-500 px-4 py-1.5 rounded-full text-white dark:text-slate-950 text-[10px] font-black uppercase shadow-md";
-                document.getElementById('reset-tournament-btn').classList.remove('hidden');
-                document.getElementById('delete-arena-btn').classList.remove('hidden');
-            } else {
-                badge.innerHTML = `<i data-lucide="eye" class="w-3.5 h-3.5"></i> Spectator`;
-                badge.className = "flex items-center gap-1.5 bg-cyan-500 px-4 py-1.5 rounded-full text-white dark:text-slate-950 text-[10px] font-black uppercase shadow-md";
-                document.getElementById('reset-tournament-btn').classList.add('hidden');
-                document.getElementById('delete-arena-btn').classList.add('hidden');
-            }
-            
-            await fetchActiveArenaFull(id);
-            if (!arenas[activeId].bracket) {
-                const koCount = arenas[activeId].koCount || 4;
-                const fmt = arenas[activeId].format;
-                const isGroupsOrLeague = fmt.includes("Groups") || fmt.includes("League");
-                queueSave({ bracket: initBracket(koCount, isGroupsOrLeague) });
-            }
-            
-            renderHeader();
-            switchTab('teams');
-            
-            if (syncInterval) clearInterval(syncInterval);
-            syncInterval = setInterval(() => fetchActiveArenaFull(activeId), 10000); // 10s auto-refresh
-        };
-
-        const renderHeader = () => {
-            const a = arenas[activeId];
-            if (!a) return;
-            document.getElementById('active-title').innerText = a.name;
-            document.getElementById('active-format').innerText = a.format;
-            const priorityBadge = document.getElementById('active-priority-badge');
-            if (a.prioritySeeding && a.format !== 'Pure Knockout' && a.format.includes('Knockout')) {
-                priorityBadge.classList.remove('hidden');
-            } else {
-                priorityBadge.classList.add('hidden');
-            }
-            
-            lucide.createIcons();
-        };
-
-        const switchTab = (tab) => {
-            currentTab = tab;
+        function renderTabsNav() {
             const bar = document.getElementById('tab-bar');
-            bar.innerHTML = "";
-            const fmt = arenas[activeId]?.format || "";
-            
-            let tabs = ['teams'];
-            if(fmt.includes('Groups') || fmt.includes('League')) tabs.push('standings');
-            if(fmt.includes('Knockout')) tabs.push('bracket');
-            
-            tabs.forEach(t => {
-                const btn = createEl('button', `px-5 sm:px-6 py-4 text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-colors relative ${currentTab === t ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`, t);
-                if (currentTab === t) {
-                    btn.innerHTML += `<div class="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 dark:bg-emerald-400"></div>`;
-                }
-                btn.onclick = () => switchTab(t);
-                bar.appendChild(btn);
-            });
-            
-            if(tab === 'teams') renderTeams();
-            else if(tab === 'standings') renderStandings();
-            else if(tab === 'bracket') renderBracketView();
-        };
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
 
-        const renderTeams = () => {
-            const a = arenas[activeId];
-            const content = document.getElementById('tab-content');
-            content.innerHTML = "";
-            
-            if(role === 'admin') {
-                content.innerHTML = `
-                    <div class="mb-8 p-6 bg-slate-100 dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-4 items-center">
-                        <div class="relative w-full">
-                            <span class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400"><i data-lucide="swords" class="w-5 h-5"></i></span>
-                            <input id="new-team-name" placeholder="Enter team or player name..." class="w-full pl-12 pr-4 py-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm outline-none text-slate-900 dark:text-white transition-colors focus:border-emerald-500">
-                        </div>
-                        <button id="add-team-btn" class="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-white dark:text-slate-950 rounded-2xl font-black text-xs uppercase shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap active:scale-95">Enroll Team</button>
-                    </div>`;
-            }
-            
-            const list = createEl('div', 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4');
-            (a.teams||[]).forEach(t => {
-                const grpBadge = t.group ? `<span class="text-[9px] font-black bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 px-2 py-0.5 rounded ml-2">GRP ${t.group}</span>` : '';
-                const item = createEl('div', 'flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm group');
-                item.innerHTML = `
-                    <div class="flex items-center gap-3 overflow-hidden">
-                        <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-400 shrink-0 border border-slate-200 dark:border-slate-700">${t.name.substring(0,2).toUpperCase()}</div>
-                        <span class="font-bold text-sm truncate dark:text-white">${t.name} ${grpBadge}</span>
-                    </div>`;
-                if(role === 'admin') {
-                    const del = createEl('button', 'text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-2 shrink-0', '<i data-lucide="trash-2" class="w-4 h-4"></i>');
-                    del.onclick = () => showConfirm("Remove Team?", `Are you sure you want to remove ${t.name}? This might reset standings if matches exist.`, () => {
-                        const newTeams = a.teams.filter(x => x.id !== t.id);
-                        queueSave({ teams: newTeams, groups: {}, matches: [], bracket: initBracket(a.koCount || 4, a.format.includes("Groups")||a.format.includes("League")) });
-                        renderTeams();
-                    });
-                    item.appendChild(del);
-                }
-                list.appendChild(item);
-            });
-            content.appendChild(list);
-            
-            if(role === 'admin' && a.teams?.length > 0 && (a.format.includes('Groups') || a.format.includes('League')) && (!a.groups || Object.keys(a.groups).length === 0)) {
-                const btnArea = createEl('div', 'mt-8 flex justify-center');
-                const genBtn = createEl('button', 'px-8 py-4 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 active:scale-95', '<i data-lucide="shuffle" class="w-4 h-4"></i> Generate Groups / Schedule');
-                genBtn.onclick = () => {
-                    const grps = a.format.includes('Groups') ? generateGroups(a.teams) : { League: a.teams.map(x=>x.id) };
-                    const legs = a.format.includes('2 Legs') ? 2 : 1;
-                    const matches = [];
-                    for(let g in grps) {
-                        const tms = grps[g];
-                        for(let i=0; i<tms.length; i++){
-                            for(let j=i+1; j<tms.length; j++){
-                                matches.push({ id:`M${Date.now()}${i}${j}1`, group:g, t1:tms[i], t2:tms[j], s1:'', s2:'', status:'pending' });
-                                if(legs === 2) matches.push({ id:`M${Date.now()}${i}${j}2`, group:g, t1:tms[j], t2:tms[i], s1:'', s2:'', status:'pending' });
-                            }
-                        }
-                    }
-                    const updatedTeams = a.teams.map(t => {
-                        let gAssigned = '';
-                        for(let g in grps) if(grps[g].includes(t.id)) gAssigned = g;
-                        return {...t, group: gAssigned};
-                    });
-                    queueSave({ groups: grps, matches, teams: updatedTeams });
-                    showNotification("Schedule Generated!");
-                    renderTeams();
-                };
-                btnArea.appendChild(genBtn);
-                content.appendChild(btnArea);
-            }
-            if(role === 'admin') {
-                const nt = document.getElementById('new-team-name');
-                if(nt) {
-                    const handleAdd = () => {
-                        const val = nt.value.trim();
-                        if(!val) return;
-                        if((a.teams||[]).find(x=>x.name.toLowerCase()===val.toLowerCase())){
-                            showNotification("Team name exists!", "error"); return;
-                        }
-                        const id = `T${Date.now()}`;
-                        queueSave({ teams: [...(a.teams||[]), {id, name:val, group:''}] });
-                        nt.value = "";
-                        renderTeams();
-                    };
-                    document.getElementById('add-team-btn').onclick = handleAdd;
-                    nt.onkeypress = (e) => { if(e.key === 'Enter') handleAdd(); };
-                }
-            }
-            lucide.createIcons();
-        };
-
-        const renderStandings = () => {
-            const a = arenas[activeId];
-            const content = document.getElementById('tab-content');
-            content.innerHTML = "";
-            if(!a.groups || Object.keys(a.groups).length === 0) {
-                content.innerHTML = `<div class="text-center text-slate-400 py-12"><i data-lucide="layout-grid" class="w-12 h-12 mx-auto mb-3 opacity-20"></i><p class="text-xs font-bold uppercase tracking-wider">Schedule not generated yet.</p></div>`;
-                lucide.createIcons();
-                return;
-            }
-
-            const getTeamName = id => a.teams?.find(x=>x.id===id)?.name || "Unknown";
-
-            const stats = {};
-            (a.teams||[]).forEach(t => stats[t.id] = {id:t.id, p:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, pts:0});
-            (a.matches||[]).forEach(m => {
-                if(m.status === 'completed' && m.s1!=='' && m.s2!=='') {
-                    const s1=parseInt(m.s1), s2=parseInt(m.s2);
-                    const st1=stats[m.t1], st2=stats[m.t2];
-                    if(!st1 || !st2) return;
-                    st1.p++; st2.p++;
-                    st1.gf+=s1; st1.ga+=s2; st1.gd=st1.gf-st1.ga;
-                    st2.gf+=s2; st2.ga+=s1; st2.gd=st2.gf-st2.ga;
-                    if(s1>s2){ st1.w++; st1.pts+=3; st2.l++; }
-                    else if(s1<s2){ st2.w++; st2.pts+=3; st1.l++; }
-                    else { st1.d++; st2.d++; st1.pts+=1; st2.pts+=1; }
-                }
-            });
-
-            for(let g in a.groups) {
-                const sorted = a.groups[g].map(id=>stats[id]).sort((x,y)=>{
-                    if(y.pts !== x.pts) return y.pts - x.pts;
-                    if(y.gd !== x.gd) return y.gd - x.gd;
-                    return y.gf - x.gf;
-                });
-                
-                const wrapper = createEl('div', 'mb-10');
-                const title = g === 'League' ? 'League Standings' : `Group ${g}`;
-                wrapper.innerHTML = `<h3 class="font-black text-sm uppercase tracking-widest text-slate-400 mb-4 ml-2 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> ${title}</h3>`;
-                
-                const tableWrap = createEl('div', 'overflow-x-auto bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm');
-                let tHTML = `
-                    <table class="w-full text-left text-sm whitespace-nowrap">
-                        <thead class="bg-slate-50/50 dark:bg-slate-950/50 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                            <tr>
-                                <th class="p-4 font-black w-10 text-center">#</th>
-                                <th class="p-4 font-black">Team</th>
-                                <th class="p-4 font-black text-center">MP</th>
-                                <th class="p-4 font-black text-center text-emerald-500">W</th>
-                                <th class="p-4 font-black text-center text-slate-400">D</th>
-                                <th class="p-4 font-black text-center text-red-500">L</th>
-                                <th class="p-4 font-black text-center hidden sm:table-cell">GF</th>
-                                <th class="p-4 font-black text-center hidden sm:table-cell">GA</th>
-                                <th class="p-4 font-black text-center">GD</th>
-                                <th class="p-4 font-black text-center text-indigo-500 dark:text-indigo-400">PTS</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800/50">
-                `;
-                sorted.forEach((st, idx) => {
-                    const isTop = idx === 0 && a.prioritySeeding && a.format.includes('Knockout');
-                    const badge = isTop ? `<span class="ml-2 text-[8px] bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 px-1.5 py-0.5 rounded-sm uppercase font-black">Seeded</span>` : '';
-                    tHTML += `
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                            <td class="p-4 text-center font-black text-slate-400">${idx+1}</td>
-                            <td class="p-4 font-bold text-slate-800 dark:text-white flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500">${getTeamName(st.id).substring(0,2).toUpperCase()}</div> ${getTeamName(st.id)} ${badge}</td>
-                            <td class="p-4 text-center font-bold text-slate-500">${st.p}</td>
-                            <td class="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">${st.w}</td>
-                            <td class="p-4 text-center font-bold text-slate-400">${st.d}</td>
-                            <td class="p-4 text-center font-bold text-red-600 dark:text-red-400">${st.l}</td>
-                            <td class="p-4 text-center font-bold text-slate-500 hidden sm:table-cell">${st.gf}</td>
-                            <td class="p-4 text-center font-bold text-slate-500 hidden sm:table-cell">${st.ga}</td>
-                            <td class="p-4 text-center font-bold ${st.gd>0?'text-emerald-500':st.gd<0?'text-red-500':'text-slate-400'}">${st.gd>0?'+'+st.gd:st.gd}</td>
-                            <td class="p-4 text-center font-black text-indigo-600 dark:text-indigo-400">${st.pts}</td>
-                        </tr>
-                    `;
-                });
-                tHTML += `</tbody></table>`;
-                tableWrap.innerHTML = tHTML;
-                wrapper.appendChild(tableWrap);
-                
-                const matchesWrap = createEl('div', 'mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3');
-                const gMatches = a.matches.filter(m => m.group === g);
-                gMatches.forEach(m => {
-                    const mCard = createEl('div', `bg-white dark:bg-slate-900 p-4 rounded-2xl border ${m.status==='completed'?'border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-900/10 dark:border-emerald-500/20':'border-slate-200 dark:border-slate-800'} shadow-sm relative overflow-hidden sync-protected`);
-                    
-                    if(role === 'admin') {
-                        mCard.innerHTML = `
-                            <div class="flex justify-between items-center mb-3">
-                                <span class="text-[9px] font-black uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">Match</span>
-                                <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" class="w-3 h-3 accent-emerald-500 rounded border-slate-300" ${m.status==='completed'?'checked':''}>
-                                    <span class="text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">Final</span>
-                                </label>
-                            </div>
-                            <div class="space-y-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="flex-1 text-xs font-bold truncate dark:text-white">${getTeamName(m.t1)}</span>
-                                    <input type="number" class="w-10 h-8 text-center rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm font-black focus:border-emerald-500 outline-none dark:text-white transition-colors" value="${m.s1}">
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <span class="flex-1 text-xs font-bold truncate dark:text-white">${getTeamName(m.t2)}</span>
-                                    <input type="number" class="w-10 h-8 text-center rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm font-black focus:border-emerald-500 outline-none dark:text-white transition-colors" value="${m.s2}">
-                                </div>
-                            </div>
-                        `;
-                        const inputs = mCard.querySelectorAll('input[type="number"]');
-                        const chk = mCard.querySelector('input[type="checkbox"]');
-                        
-                        const updateMatch = () => {
-                            m.s1 = inputs[0].value; m.s2 = inputs[1].value;
-                            m.status = chk.checked ? 'completed' : 'pending';
-                            queueSave({ matches: a.matches });
-                            if (currentTab === 'standings') renderStandings();
-                        };
-                        inputs.forEach(inp => inp.onblur = updateMatch);
-                        chk.onchange = updateMatch;
-                    } else {
-                        mCard.innerHTML = `
-                            <div class="flex justify-between items-center mb-3">
-                                <span class="text-[9px] font-black uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">Match</span>
-                                ${m.status==='completed'?'<span class="text-[9px] font-black uppercase text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded">FT</span>':''}
-                            </div>
-                            <div class="space-y-2">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold truncate dark:text-white">${getTeamName(m.t1)}</span>
-                                    <span class="font-black text-sm w-6 text-center ${m.status==='completed'?'text-slate-800 dark:text-white':'text-slate-300 dark:text-slate-600'}">${m.s1!==''?m.s1:'-'}</span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold truncate dark:text-white">${getTeamName(m.t2)}</span>
-                                    <span class="font-black text-sm w-6 text-center ${m.status==='completed'?'text-slate-800 dark:text-white':'text-slate-300 dark:text-slate-600'}">${m.s2!==''?m.s2:'-'}</span>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    matchesWrap.appendChild(mCard);
-                });
-                wrapper.appendChild(matchesWrap);
-                content.appendChild(wrapper);
-            }
-            lucide.createIcons();
-        };
-
-        const renderBracketMatch = (m, label, roundId) => {
-            const a = arenas[activeId];
-            const getTeamName = id => a.teams?.find(x=>x.id===id)?.name || (id?id:"TBD");
-            
-            const card = createEl('div', `w-64 bg-white dark:bg-slate-900 border ${m.t1&&m.t2?(m.s1!==''&&m.s2!==''?'border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-900/10':'border-indigo-500/30 shadow-md shadow-indigo-500/5'):'border-slate-200 dark:border-slate-800'} rounded-[1.5rem] p-4 relative my-4 z-10 transition-colors sync-protected`);
-            
-            const p1Val = m.p1 !== undefined ? m.p1 : '';
-            const p2Val = m.p2 !== undefined ? m.p2 : '';
-            
-            let html = `<div class="text-[9px] font-black uppercase text-slate-400 mb-3 tracking-widest text-center ${m.isLosersFinal?'text-amber-500':''}">${label}</div>`;
-            
-            if(role === 'admin') {
-                const draw = (m.s1 !== '' && m.s2 !== '' && m.s1 === m.s2);
-                html += `
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <select id="sel-t1-${m.id}" class="w-full text-xs font-bold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 outline-none dark:text-white">
-                                <option value="">TBD</option>
-                                ${a.teams?.map(t=>`<option value="${t.id}" ${t.id===m.t1?'selected':''}>${t.name}</option>`).join('')}
-                            </select>
-                            <input type="number" id="s1-${m.id}" class="w-10 h-8 text-center rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm font-black focus:border-emerald-500 outline-none dark:text-white" value="${m.s1}">
-                            <input type="number" id="p1-${m.id}" class="w-8 h-8 text-center rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs font-black focus:border-amber-500 outline-none text-amber-600 dark:text-amber-400 ${draw?'':'hidden'}" placeholder="PK" value="${p1Val}">
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <select id="sel-t2-${m.id}" class="w-full text-xs font-bold bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 outline-none dark:text-white">
-                                <option value="">TBD</option>
-                                ${a.teams?.map(t=>`<option value="${t.id}" ${t.id===m.t2?'selected':''}>${t.name}</option>`).join('')}
-                            </select>
-                            <input type="number" id="s2-${m.id}" class="w-10 h-8 text-center rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm font-black focus:border-emerald-500 outline-none dark:text-white" value="${m.s2}">
-                            <input type="number" id="p2-${m.id}" class="w-8 h-8 text-center rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs font-black focus:border-amber-500 outline-none text-amber-600 dark:text-amber-400 ${draw?'':'hidden'}" placeholder="PK" value="${p2Val}">
-                        </div>
-                    </div>`;
-            } else {
-                const draw = (m.s1 !== '' && m.s2 !== '' && m.s1 === m.s2);
-                html += `
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold truncate dark:text-white ${!m.t1?'text-slate-400 italic':''}">${getTeamName(m.t1)}</span>
-                            <div class="flex gap-1">
-                                ${draw && p1Val!=='' ? `<span class="text-[9px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1 rounded flex items-center">PK ${p1Val}</span>` : ''}
-                                <span class="font-black text-sm w-6 text-center ${m.s1!==''?'text-slate-800 dark:text-white':'text-slate-300 dark:text-slate-600'}">${m.s1!==''?m.s1:'-'}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold truncate dark:text-white ${!m.t2?'text-slate-400 italic':''}">${getTeamName(m.t2)}</span>
-                            <div class="flex gap-1">
-                                ${draw && p2Val!=='' ? `<span class="text-[9px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1 rounded flex items-center">PK ${p2Val}</span>` : ''}
-                                <span class="font-black text-sm w-6 text-center ${m.s2!==''?'text-slate-800 dark:text-white':'text-slate-300 dark:text-slate-600'}">${m.s2!==''?m.s2:'-'}</span>
-                            </div>
-                        </div>
-                    </div>`;
-            }
-            card.innerHTML = html;
-            
-            if(role === 'admin') {
-                setTimeout(() => {
-                    const el = (id) => document.getElementById(id);
-                    const update = () => {
-                        m.t1 = el(`sel-t1-${m.id}`).value || null;
-                        m.t2 = el(`sel-t2-${m.id}`).value || null;
-                        m.s1 = el(`s1-${m.id}`).value;
-                        m.s2 = el(`s2-${m.id}`).value;
-                        
-                        const isDraw = (m.s1 !== '' && m.s2 !== '' && m.s1 === m.s2);
-                        if (isDraw) {
-                            el(`p1-${m.id}`).classList.remove('hidden');
-                            el(`p2-${m.id}`).classList.remove('hidden');
-                            m.p1 = el(`p1-${m.id}`).value;
-                            m.p2 = el(`p2-${m.id}`).value;
-                        } else {
-                            el(`p1-${m.id}`).classList.add('hidden');
-                            el(`p2-${m.id}`).classList.add('hidden');
-                            el(`p1-${m.id}`).value = ''; el(`p2-${m.id}`).value = '';
-                            m.p1 = ''; m.p2 = '';
-                        }
-                        
-                        queueSave({ bracket: a.bracket });
-                    };
-                    ['sel-t1-','sel-t2-','s1-','s2-','p1-','p2-'].forEach(prefix => {
-                        el(`${prefix}${m.id}`).onchange = update;
-                        if(prefix.startsWith('s') || prefix.startsWith('p')) el(`${prefix}${m.id}`).onkeyup = update;
-                    });
-                }, 0);
-            }
-            return card;
-        };
-
-        const renderBracketView = () => {
-            const a = arenas[activeId];
-            const content = document.getElementById('tab-content');
-            content.innerHTML = "";
-            const b = a.bracket;
-            if(!b) return;
-
-            if(role === 'admin' && (a.format.includes('Groups') || a.format.includes('League')) && !a.format.includes('Pure Knockout')) {
-                const btnWrap = createEl('div', 'mb-8 flex justify-center');
-                const fillBtn = createEl('button', 'px-8 py-4 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 active:scale-95', '<i data-lucide="git-merge" class="w-4 h-4"></i> Auto-Seed from Standings');
-                fillBtn.onclick = () => {
-                    const stats = {};
-                    (a.teams||[]).forEach(t => stats[t.id] = {id:t.id, pts:0, gd:0, gf:0});
-                    (a.matches||[]).forEach(m => {
-                        if(m.status==='completed' && m.s1!=='' && m.s2!=='') {
-                            const s1=parseInt(m.s1), s2=parseInt(m.s2);
-                            const st1=stats[m.t1], st2=stats[m.t2];
-                            if(!st1 || !st2) return;
-                            st1.gf+=s1; st1.gd+=(s1-s2);
-                            st2.gf+=s2; st2.gd+=(s2-s1);
-                            if(s1>s2) st1.pts+=3; else if(s1<s2) st2.pts+=3; else { st1.pts+=1; st2.pts+=1; }
-                        }
-                    });
-                    
-                    let qualifiers = [];
-                    if(a.format.includes('Groups') && a.groups) {
-                        for(let g in a.groups) {
-                            const sorted = a.groups[g].map(id=>stats[id]).sort((x,y)=> y.pts!==x.pts ? y.pts-x.pts : (y.gd!==x.gd ? y.gd-x.gd : y.gf-x.gf));
-                            const advanceCount = a.koCount >= 8 ? 2 : (a.koCount === 4 ? 1 : 1);
-                            qualifiers.push(...sorted.slice(0, advanceCount).map((s, idx) => ({id: s.id, pos: idx+1, grp: g})));
-                        }
-                    } else if (a.format.includes('League') && a.groups && a.groups['League']) {
-                        const sorted = a.groups['League'].map(id=>stats[id]).sort((x,y)=> y.pts!==x.pts ? y.pts-x.pts : (y.gd!==x.gd ? y.gd-x.gd : y.gf-x.gf));
-                        qualifiers = sorted.slice(0, a.koCount).map((s, idx) => ({id: s.id, pos: idx+1, grp: 'L'}));
-                    }
-                    
-                    if (qualifiers.length > 0) {
-                        if (a.prioritySeeding && qualifiers[0].pos !== undefined) {
-                            const winners = qualifiers.filter(q => q.pos === 1);
-                            const runners = qualifiers.filter(q => q.pos === 2);
-                            
-                            if (a.koCount === 4 && b.semis) {
-                                if (winners.length === 4) {
-                                    b.semis[0].t1 = winners[0].id; b.semis[0].t2 = winners[3].id;
-                                    b.semis[1].t1 = winners[1].id; b.semis[1].t2 = winners[2].id;
-                                }
-                            } else if (a.koCount === 8 && b.quarters) {
-                                if (winners.length === 4 && runners.length === 4) {
-                                    b.quarters[0].t1 = winners[0].id; b.quarters[0].t2 = runners[3].id;
-                                    b.quarters[1].t1 = winners[1].id; b.quarters[1].t2 = runners[2].id;
-                                    b.quarters[2].t1 = winners[2].id; b.quarters[2].t2 = runners[1].id;
-                                    b.quarters[3].t1 = winners[3].id; b.quarters[3].t2 = runners[0].id;
-                                }
-                            }
-                        } else {
-                            if (b.ro16 && qualifiers.length >= 16) {
-                                for(let i=0; i<8; i++){ b.ro16[i].t1=qualifiers[i*2].id; b.ro16[i].t2=qualifiers[i*2+1].id; }
-                            } else if (b.quarters && qualifiers.length >= 8) {
-                                for(let i=0; i<4; i++){ b.quarters[i].t1=qualifiers[i*2].id; b.quarters[i].t2=qualifiers[i*2+1].id; }
-                            } else if (b.semis && qualifiers.length >= 4) {
-                                b.semis[0].t1=qualifiers[0].id; b.semis[0].t2=qualifiers[3].id;
-                                b.semis[1].t1=qualifiers[1].id; b.semis[1].t2=qualifiers[2].id;
-                            } else if (b.finals && qualifiers.length >= 2) {
-                                b.finals[0].t1=qualifiers[0].id; b.finals[0].t2=qualifiers[1].id;
-                            }
-                        }
-                        queueSave({ bracket: b });
-                        showNotification("Seeded from Standings!");
-                        renderBracketView();
-                    } else {
-                        showNotification("Not enough teams/data to seed.", "error");
-                    }
-                };
-                btnWrap.appendChild(fillBtn);
-                content.appendChild(btnWrap);
-            }
-
-            const container = createEl('div', 'bracket-container');
-            
-            const roundsData = [
-                { key: 'ro16', label: 'Round of 16' },
-                { key: 'quarters', label: 'Quarter Finals' },
-                { key: 'semis', label: 'Semi Finals' },
-                { key: 'finals', label: 'Finals' }
+            let tabs = [
+                { id: 'teams', label: 'Squads Enrolled', icon: 'users' },
+                { id: 'matches', label: 'Matches Grid', icon: 'swords' }
             ];
 
-            roundsData.forEach((rd, idx) => {
-                if(b[rd.key]) {
-                    const col = createEl('div', 'bracket-round relative');
-                    if (idx < roundsData.length - 1) {
-                        const connector = createEl('div', 'absolute top-0 right-[-1rem] w-[1rem] h-full border-r-2 border-slate-200 dark:border-slate-800/50 opacity-50 z-0 hidden md:block');
-                        col.appendChild(connector);
-                    }
-                    b[rd.key].forEach(m => {
-                        if(m.isLosersFinal && !a.losersFinal) return; 
-                        col.appendChild(renderBracketMatch(m, m.isLosersFinal ? '3rd Place Match' : rd.label, rd.key));
-                    });
-                    container.appendChild(col);
+            if (t.matches && Object.keys(t.matches).length > 0) {
+                if (t.format === "Pure Knockout" || t.format.includes("+ Knockout")) {
+                    tabs.push({ id: 'bracket', label: 'Playoff Bracket', icon: 'git-merge' });
                 }
+                if (t.format !== "Pure Knockout") {
+                    tabs.push({ id: 'standings', label: 'Standings Stand', icon: 'list-ordered' });
+                }
+            }
+
+            bar.innerHTML = tabs.map(tab => `
+                <button data-tab="${tab.id}" class="flex items-center gap-2 px-6 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all whitespace-nowrap ${
+                    currentTab === tab.id 
+                        ? 'border-emerald-500 text-emerald-500 dark:text-emerald-400' 
+                        : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600'
+                }">
+                    <i data-lucide="${tab.icon}" class="w-4 h-4"></i> ${tab.label}
+                </button>
+            `).join('');
+
+            bar.querySelectorAll('button').forEach(btn => {
+                btn.onclick = () => switchTab(btn.getAttribute('data-tab'));
+            });
+            refreshIcons();
+        }
+
+        function renderTabContent() {
+            const container = document.getElementById('tab-content');
+            container.innerHTML = '';
+            
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
+
+            const isLockedArena = (t.hasPin && isReadOnlyMode);
+            document.getElementById('role-badge').className = `flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-black uppercase shadow-sm ${
+                isLockedArena ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-emerald-500 text-white dark:text-slate-950'
+            }`;
+            document.getElementById('role-badge').innerHTML = isLockedArena 
+                ? `<i data-lucide="eye" class="w-3.5 h-3.5"></i> Spectator` 
+                : `<i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Arena Host`;
+
+            const prioBadge = document.getElementById('active-priority-badge');
+            if (t.prioritySeeding) {
+                prioBadge.classList.remove('hidden');
+            } else {
+                prioBadge.classList.add('hidden');
+            }
+
+            if (currentTab === 'teams') {
+                let html = `
+                    <div class="max-w-md mx-auto space-y-6">
+                        ${!isLockedArena ? `
+                        <div class="flex gap-2">
+                            <input id="team-input-name" placeholder="Enter Registration Tag..." class="flex-1 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none text-slate-900 dark:text-white">
+                            <button id="add-team-btn" class="bg-emerald-500 text-white dark:text-slate-950 px-6 rounded-2xl font-black text-xs uppercase hover:bg-emerald-400 transition-colors shadow-md">Register</button>
+                        </div>` : ''}
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/50 rounded-3xl p-4 divide-y divide-slate-100 dark:divide-slate-800/60" id="team-list-box"></div>
+                        ${(!t.matches || t.matches.length === 0) && !isLockedArena ? `
+                        <button onclick="generateStage()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 active:scale-95 transition-all">Forge Grid Bracket</button>
+                        ` : ''}
+                    </div>`;
+                container.innerHTML = html;
+
+                if (!isLockedArena) {
+                    document.getElementById('add-team-btn').onclick = () => {
+                        let nameInput = document.getElementById('team-input-name');
+                        let tName = nameInput.value.trim();
+                        if (!tName) return;
+                        
+                        if (!t.teams) t.teams = {};
+                        const normalizedInput = tName.toLowerCase();
+                        const exists = Object.keys(t.teams).some(team => team.toLowerCase() === normalizedInput);
+                        
+                        if (exists) {
+                            return showNotification("Duplicate handle detected. Enter a unique handle.", "warning");
+                        }
+                        
+                        t.teams[tName] = { name: tName };
+                        nameInput.value = '';
+                        pushUpdateData(t);
+                        renderTabContent();
+                    };
+                }
+
+                const listGrid = document.getElementById('team-list-box');
+                const tList = t.teams ? Object.values(t.teams) : [];
+                if (tList.length === 0) {
+                    listGrid.innerHTML = `<p class="p-6 text-center text-xs font-black uppercase text-slate-400 tracking-wider">No tags registered in arena.</p>`;
+                } else {
+                    tList.forEach(tm => {
+                        let div = document.createElement('div');
+                        div.className = "py-3.5 px-2 flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300";
+                        div.innerHTML = `
+                            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> ${escapeHtml(tm.name)}</span>
+                            ${!isLockedArena && (!t.matches || t.matches.length === 0) ? `
+                            <button class="text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition-colors" data-delete-team="${escapeHtml(tm.name)}"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            ` : ''}
+                        `;
+                        listGrid.appendChild(div);
+                    });
+
+                    listGrid.querySelectorAll('[data-delete-team]').forEach(btn => {
+                        btn.onclick = () => {
+                            let targetedName = btn.getAttribute('data-delete-team');
+                            delete t.teams[targetedName];
+                            pushUpdateData(t);
+                            renderTabContent();
+                        }
+                    });
+                }
+            } 
+            else if (currentTab === 'matches') {
+                let matchesList = t.matches ? Object.values(t.matches) : [];
+                if (matchesList.length === 0) {
+                    container.innerHTML = `
+                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center rounded-[2rem]">
+                            <p class="text-xs font-black uppercase text-slate-400 tracking-wider">Draw Grid not built. Setup squads and compile arena layout.</p>
+                        </div>`;
+                    return;
+                }
+
+                if (!currentStageFilter) {
+                    currentStageFilter = t.stage || matchesList[0]?.stage || STAGES.LEAGUE;
+                }
+                
+                let stagesAvailable = [...new Set(matchesList.map(m => m.stage))];
+                
+                let filterHtml = `
+                    <div class="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar">
+                        ${stagesAvailable.map(st => `
+                            <button data-stage-filter="${st}" class="px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl border transition-all whitespace-nowrap ${
+                                currentStageFilter === st 
+                                    ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950 shadow-md' 
+                                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'
+                            }">${st}</button>
+                        `).join('')}
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-100/40 dark:bg-slate-900/40 p-4 rounded-3xl border border-slate-200/50 dark:border-slate-800/50">
+                        <div class="relative flex-1">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                            </span>
+                            <input id="match-search-input" type="text" placeholder="Search matches by team handle..." value="${escapeHtml(matchSearchQuery)}" class="w-full pl-9 pr-4 py-3 text-xs rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white transition-colors focus:border-emerald-500 shadow-sm">
+                        </div>
+                        <div class="relative min-w-[150px]">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="filter" class="w-4 h-4"></i>
+                            </span>
+                            <select id="match-status-filter" class="w-full pl-9 pr-8 py-3 text-xs rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold transition-colors focus:border-emerald-500 shadow-sm appearance-none cursor-pointer">
+                                <option value="all" ${matchStatusFilter === 'all' ? 'selected' : ''}>All Matches</option>
+                                <option value="Scheduled" ${matchStatusFilter === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
+                                <option value="Live" ${matchStatusFilter === 'Live' ? 'selected' : ''}>Live</option>
+                                <option value="Finished" ${matchStatusFilter === 'Finished' ? 'selected' : ''}>Finished</option>
+                            </select>
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 dark:text-slate-500">
+                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4" id="matches-render-container"></div>
+                `;
+                container.innerHTML = filterHtml;
+
+                const filterButtons = container.querySelectorAll('[data-stage-filter]');
+                
+                const applyAllFilters = () => {
+                    let subset = matchesList.filter(m => m.stage === currentStageFilter);
+                    
+                    if (matchSearchQuery.trim() !== '') {
+                        const q = matchSearchQuery.toLowerCase().trim();
+                        subset = subset.filter(m => 
+                            m.t1.toLowerCase().includes(q) || 
+                            m.t2.toLowerCase().includes(q)
+                        );
+                    }
+                    
+                    if (matchStatusFilter !== 'all') {
+                        subset = subset.filter(m => m.status === matchStatusFilter);
+                    }
+                    
+                    displayFilteredMatches(subset, t, isLockedArena);
+                };
+
+                filterButtons.forEach(btn => {
+                    btn.onclick = () => {
+                        currentStageFilter = btn.getAttribute('data-stage-filter');
+                        filterButtons.forEach(b => b.className = b.className.replace(/bg-emerald-500.*/, 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'));
+                        btn.className = "px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl border transition-all whitespace-nowrap bg-emerald-500 border-emerald-500 text-white dark:text-slate-950 shadow-md";
+                        preserveInputValues();
+                        applyAllFilters();
+                        restoreInputValues();
+                    };
+                });
+
+                const matchSearchInput = document.getElementById('match-search-input');
+                const matchStatusSelect = document.getElementById('match-status-filter');
+
+                matchSearchInput.oninput = (e) => {
+                    matchSearchQuery = e.target.value;
+                    preserveInputValues();
+                    applyAllFilters();
+                    restoreInputValues();
+                };
+
+                matchStatusSelect.onchange = (e) => {
+                    matchStatusFilter = e.target.value;
+                    preserveInputValues();
+                    applyAllFilters();
+                    restoreInputValues();
+                };
+
+                applyAllFilters();
+            } 
+            else if (currentTab === 'standings') {
+                let matchesList = t.matches ? Object.values(t.matches) : [];
+                let teamsList = t.teams ? Object.values(t.teams) : [];
+
+                if (t.format.includes('Groups')) {
+                    const groupAssignments = t.groupAssignments || {};
+                    const groups = [...new Set(Object.values(groupAssignments))].sort();
+                    
+                    let groupTablesHtml = groups.map(gId => {
+                        let sortedGroup = calculateStats(teamsList, matchesList, gId, groupAssignments);
+                        return `
+                            <div class="space-y-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/60 p-5 rounded-[2rem] shadow-sm">
+                                <h4 class="text-xs font-black uppercase text-emerald-500 tracking-widest pl-2">Group Pool ${gId}</h4>
+                                <div class="overflow-x-auto no-scrollbar">${buildStandingsTableTemplate(sortedGroup)}</div>
+                            </div>`;
+                    }).join('<div class="h-6"></div>');
+                    container.innerHTML = groupTablesHtml;
+                } else {
+                    let fullSorted = calculateStats(teamsList, matchesList);
+                    container.innerHTML = `
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-[2rem] shadow-sm overflow-x-auto no-scrollbar">
+                            ${buildStandingsTableTemplate(fullSorted)}
+                        </div>`;
+                }
+            } 
+            else if (currentTab === 'bracket') {
+                let matchesList = t.matches ? Object.values(t.matches) : [];
+                let koMatches = matchesList.filter(m => m.stage !== STAGES.GROUPS && m.stage !== STAGES.LEAGUE);
+
+                if (koMatches.length === 0) {
+                    container.innerHTML = `
+                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center rounded-[2rem]">
+                            <p class="text-xs font-black uppercase text-slate-400 tracking-wider">Playoff brackets reveal post qualifying stage.</p>
+                        </div>`;
+                    return;
+                }
+
+                let roundsOrder = [STAGES.R16, STAGES.QUARTERS, STAGES.SEMIS, STAGES.FINAL];
+                let bracketContainer = document.createElement('div');
+                bracketContainer.className = "bracket-container no-scrollbar";
+
+                roundsOrder.forEach(rLabel => {
+                    let rMatches = koMatches.filter(m => m.stage === rLabel).sort((a, b) => a.koIndex - b.koIndex);
+                    if (rMatches.length === 0) return;
+
+                    let roundDiv = document.createElement('div');
+                    roundDiv.className = "bracket-round";
+                    roundDiv.innerHTML = `<h5 class="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4 text-center border-b dark:border-slate-800/80 pb-2">${rLabel}</h5>`;
+
+                    rMatches.forEach(m => {
+                        let card = document.createElement('div');
+                        card.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl mb-4 shadow-sm text-xs font-bold space-y-2 min-w-[230px]";
+                        
+                        let s1Val = m.s1 !== "" ? `${m.s1}` : '-';
+                        let s2Val = m.s2 !== "" ? `${m.s2}` : '-';
+
+                        let p1Badge = (m.p1 !== "" && m.p1 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p1})</span>` : '';
+                        let p2Badge = (m.p2 !== "" && m.p2 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${m.p2})</span>` : '';
+
+                        let t1Winner = false;
+                        let t2Winner = false;
+
+                        if (m.s1 !== "" && m.s2 !== "") {
+                            let s1Int = parseInt(m.s1, 10);
+                            let s2Int = parseInt(m.s2, 10);
+                            if (s1Int > s2Int) t1Winner = true;
+                            else if (s2Int > s1Int) t2Winner = true;
+                            else if (m.p1 !== "" && m.p2 !== "") {
+                                if (parseInt(m.p1, 10) > parseInt(m.p2, 10)) t1Winner = true;
+                                else t2Winner = true;
+                            }
+                        }
+
+                        card.innerHTML = `
+                            <div class="flex justify-between items-center py-1 border-b dark:border-slate-800/50">
+                                <span class="truncate ${t1Winner ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t1)} ${p1Badge}</span>
+                                <span class="font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s1Val}</span>
+                            </div>
+                            <div class="flex justify-between items-center py-1">
+                                <span class="truncate ${t2Winner ? 'text-emerald-500 font-black' : 'text-slate-600 dark:text-slate-400'}">${escapeHtml(m.t2)} ${p2Badge}</span>
+                                <span class="font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s2Val}</span>
+                            </div>
+                        `;
+                        roundDiv.appendChild(card);
+                    });
+                    bracketContainer.appendChild(roundDiv);
+                });
+
+                let thirdPlaceMatch = koMatches.find(m => m.stage === STAGES.THIRD_PLACE);
+                if (thirdPlaceMatch) {
+                    let tpDiv = document.createElement('div');
+                    tpDiv.className = "bracket-round justify-center";
+                    let s1Val = thirdPlaceMatch.s1 !== "" ? `${thirdPlaceMatch.s1}` : '-';
+                    let s2Val = thirdPlaceMatch.s2 !== "" ? `${thirdPlaceMatch.s2}` : '-';
+                    let p1Badge = (thirdPlaceMatch.p1 !== "" && thirdPlaceMatch.p1 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${thirdPlaceMatch.p1})</span>` : '';
+                    let p2Badge = (thirdPlaceMatch.p2 !== "" && thirdPlaceMatch.p2 !== undefined) ? `<span class="ml-1 text-[9px] text-amber-500 font-mono">(PK ${thirdPlaceMatch.p2})</span>` : '';
+
+                    tpDiv.innerHTML = `
+                        <h5 class="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 text-center border-b dark:border-slate-800/80 pb-2">3rd Place Match</h5>
+                        <div class="bg-white dark:bg-slate-900 border border-amber-500/20 dark:border-amber-500/10 p-4 rounded-2xl shadow-md text-xs font-bold space-y-2 min-w-[230px]">
+                            <div class="flex justify-between items-center py-1 border-b dark:border-slate-800/50">
+                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t1)} ${p1Badge}</span>
+                                <span class="font-mono bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s1Val}</span>
+                            </div>
+                            <div class="flex justify-between items-center py-1">
+                                <span class="truncate">${escapeHtml(thirdPlaceMatch.t2)} ${p2Badge}</span>
+                                <span class="font-mono bg-slate-100 dark:bg-slate-950 px-2 py-0.5 rounded">${s2Val}</span>
+                            </div>
+                        </div>
+                    `;
+                    bracketContainer.appendChild(tpDiv);
+                }
+
+                container.appendChild(bracketContainer);
+            }
+            refreshIcons();
+        }
+
+        function displayFilteredMatches(filteredMatches, tournamentObj, readOnly) {
+            const grid = document.getElementById('matches-render-container');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            if (filteredMatches.length === 0) {
+                grid.innerHTML = `<p class="col-span-full text-center text-xs font-black uppercase text-slate-400 p-6">No scheduled matches match current filters.</p>`;
+                return;
+            }
+
+            filteredMatches.forEach(m => {
+                let div = document.createElement('div');
+                div.className = "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-5 rounded-3xl shadow-sm space-y-3 relative overflow-hidden";
+                
+                let isKo = (m.stage !== STAGES.GROUPS && m.stage !== STAGES.LEAGUE);
+                
+                let showShootoutInput = false;
+                if (isKo && m.s1 !== "" && m.s2 !== "") {
+                    let val1 = parseInt(m.s1, 10);
+                    let val2 = parseInt(m.s2, 10);
+                    if (val1 === val2) {
+                        showShootoutInput = true;
+                    }
+                }
+
+                let statusBadge = '';
+                if (m.status === "Live") {
+                    statusBadge = `<span class="bg-red-500/15 text-red-500 border border-red-500/25 px-2 py-0.5 rounded text-[8px] font-black uppercase flex items-center gap-1"><span class="w-1 h-1 rounded-full bg-red-500 animate-pulse"></span> Live</span>`;
+                } else if (m.status === "Finished") {
+                    statusBadge = `<span class="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded text-[8px] font-black uppercase">Finished</span>`;
+                } else {
+                    statusBadge = `<span class="bg-slate-100 dark:bg-slate-800 text-slate-400 border border-transparent px-2 py-0.5 rounded text-[8px] font-black uppercase">Scheduled</span>`;
+                }
+                
+                div.innerHTML = `
+                    <div class="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <span>${m.stage} ${m.grp ? `• Pool ${m.grp}` : ''}</span>
+                        <div class="flex items-center gap-2">
+                            ${isKo ? `<span class="text-amber-500">Knockout</span>` : ''}
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[140px]">${escapeHtml(m.t1)}</span>
+                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s1" value="${m.s1}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
+                        </div>
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[140px]">${escapeHtml(m.t2)}</span>
+                            <input type="number" min="0" data-match-id="${m.id}" data-score-pos="s2" value="${m.s2}" ${readOnly ? 'disabled' : ''} class="match-score-input w-14 p-2 text-center text-sm font-mono font-bold bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 focus:border-emerald-500 ${readOnly ? 'opacity-80' : ''}">
+                        </div>
+                        
+                        <div class="shootout-container ${showShootoutInput ? '' : 'hidden'} space-y-2 pt-2 border-t border-dashed border-amber-500/20">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[9px] font-black uppercase text-amber-500">Shootout Required (PKs)</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="number" min="0" placeholder="PK 1" data-match-id="${m.id}" data-score-pos="p1" value="${m.p1 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                                <input type="number" min="0" placeholder="PK 2" data-match-id="${m.id}" data-score-pos="p2" value="${m.p2 || ''}" ${readOnly ? 'disabled' : ''} class="match-score-input w-full p-2 text-center text-xs font-mono bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(div);
             });
 
-            if (a.losersFinal && b.finals && !b.finals.find(m => m.isLosersFinal)) {
-                b.finals.push({id:'LF1', t1:null, t2:null, s1:'', s2:'', p1:'', p2:'', isLosersFinal: true});
-                queueSave({ bracket: b });
-                renderBracketView();
-                return;
-            } else if (!a.losersFinal && b.finals && b.finals.find(m => m.isLosersFinal)) {
-                b.finals = b.finals.filter(m => !m.isLosersFinal);
-                queueSave({ bracket: b });
-                renderBracketView();
-                return;
-            }
-
-            content.appendChild(container);
-            lucide.createIcons();
-        };
-
-        const exportPdfReport = async () => {
-            const a = arenas[activeId];
-            if (!a) return;
-            const originalBtnHtml = document.getElementById('export-pdf-btn').innerHTML;
-            document.getElementById('export-pdf-btn').innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Generating...`;
-            
-            const container = document.createElement('div');
-            container.style.padding = '30px';
-            container.style.fontFamily = 'Helvetica, Arial, sans-serif';
-            container.style.color = '#0f172a';
-            container.style.backgroundColor = '#ffffff';
-
-            let head = document.createElement('div');
-            head.style.borderBottom = '3px solid #10b981';
-            head.style.paddingBottom = '15px';
-            head.style.marginBottom = '20px';
-            head.innerHTML = `
-                <h1 style="font-size:24px;font-weight:900;text-transform:uppercase;margin:0;">${a.name}</h1>
-                <p style="font-size:12px;color:#64748b;font-weight:bold;margin-top:4px;">FORMAT: ${a.format} | DATE: ${new Date().toLocaleDateString()}</p>
-            `;
-            container.appendChild(head);
-
-            if (a.teams && a.teams.length > 0) {
-                let sec = document.createElement('div');
-                sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin:0 0 10px;text-transform:uppercase;">Participating Teams (${a.teams.length})</h2>`;
-                let tList = a.teams.map(t => `<span style="display:inline-block;padding:4px 8px;margin:0 4px 4px 0;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;font-size:10px;font-weight:bold;">${t.name}</span>`).join('');
-                sec.innerHTML += `<div>${tList}</div>`;
-                container.appendChild(sec);
-            }
-
-            const getTeamName = id => a.teams?.find(x=>x.id===id)?.name || (id?id:"TBD");
-
-            const matchesList = [];
-            if (a.matches) {
-                a.matches.forEach(m => {
-                    matchesList.push({ stage: `Group ${m.group}`, t1: getTeamName(m.t1), t2: getTeamName(m.t2), s1: m.s1, s2: m.s2, status: m.status });
+            if (!readOnly) {
+                grid.querySelectorAll('.match-score-input').forEach(input => {
+                    input.oninput = (e) => {
+                        let mId = input.getAttribute('data-match-id');
+                        let pos = input.getAttribute('data-score-pos');
+                        let matchObj = tournamentObj.matches.find(x => x.id === mId);
+                        if (matchObj) {
+                            matchObj[pos] = e.target.value;
+                            
+                            if (matchObj.s1 === "" && matchObj.s2 === "") {
+                                matchObj.status = "Scheduled";
+                            } else if (matchObj.s1 !== "" && matchObj.s2 !== "") {
+                                let s1 = parseInt(matchObj.s1, 10);
+                                let s2 = parseInt(matchObj.s2, 10);
+                                
+                                if (s1 === s2 && (matchObj.stage !== STAGES.GROUPS && matchObj.stage !== STAGES.LEAGUE)) {
+                                    let p1 = matchObj.p1 !== "" ? parseInt(matchObj.p1, 10) : null;
+                                    let p2 = matchObj.p2 !== "" ? parseInt(matchObj.p2, 10) : null;
+                                    
+                                    if (p1 !== null && p2 !== null && p1 !== p2) {
+                                        matchObj.status = "Finished";
+                                    } else {
+                                        matchObj.status = "Live";
+                                    }
+                                } else {
+                                    matchObj.status = "Finished";
+                                }
+                            } else {
+                                matchObj.status = "Live";
+                            }
+                            
+                            evaluateAndAdvanceKnockout(tournamentObj);
+                            pushUpdateData(tournamentObj);
+                        }
+                    };
                 });
             }
-            if (a.bracket) {
-                const b = a.bracket;
-                if (b.ro16) b.ro16.forEach(m => matchesList.push({ stage: 'Round of 16', t1: getTeamName(m.t1), t2: getTeamName(m.t2), s1: m.s1, s2: m.s2, p1: m.p1, p2: m.p2, status: m.s1!==''?'completed':'pending' }));
-                if (b.quarters) b.quarters.forEach(m => matchesList.push({ stage: 'Quarter Finals', t1: getTeamName(m.t1), t2: getTeamName(m.t2), s1: m.s1, s2: m.s2, p1: m.p1, p2: m.p2, status: m.s1!==''?'completed':'pending' }));
-                if (b.semis) b.semis.forEach(m => matchesList.push({ stage: 'Semi Finals', t1: getTeamName(m.t1), t2: getTeamName(m.t2), s1: m.s1, s2: m.s2, p1: m.p1, p2: m.p2, status: m.s1!==''?'completed':'pending' }));
-                if (b.finals) b.finals.forEach(m => matchesList.push({ stage: m.isLosersFinal?'3rd Place Match':'Final', t1: getTeamName(m.t1), t2: getTeamName(m.t2), s1: m.s1, s2: m.s2, p1: m.p1, p2: m.p2, status: m.s1!==''?'completed':'pending' }));
+        }
+
+        function buildStandingsTableTemplate(statsList) {
+            return `
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                            <th class="py-3 pl-2">Squad Tag</th>
+                            <th class="py-3 text-center">P</th>
+                            <th class="py-3 text-center">W</th>
+                            <th class="py-3 text-center">D</th>
+                            <th class="py-3 text-center">L</th>
+                            <th class="py-3 text-center">GD</th>
+                            <th class="py-3 text-center pr-2">Pts</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300 font-bold">
+                        ${statsList.map((st, idx) => `
+                            <tr>
+                                <td class="py-3.5 pl-2 truncate max-w-[120px]">
+                                    <span class="inline-block w-4 text-[10px] font-black ${idx<2?'text-emerald-500':'text-slate-400'}">${idx+1}</span> ${escapeHtml(st.name)}
+                                </td>
+                                <td class="py-3.5 text-center font-mono">${st.p}</td>
+                                <td class="py-3.5 text-center text-emerald-500">${st.w}</td>
+                                <td class="py-3.5 text-center text-slate-400">${st.d}</td>
+                                <td class="py-3.5 text-center text-red-500">${st.l}</td>
+                                <td class="py-3.5 text-center font-mono">${st.gd > 0 ? `+${st.gd}` : st.gd}</td>
+                                <td class="py-3.5 text-center pr-2 font-black text-slate-900 dark:text-white">${st.pts}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+        }
+
+        // ---------- SCREEN VIEW HANDLERS ----------
+        function showDashboard() {
+            activeTournamentId = null;
+            isReadOnlyMode = true;
+            currentStageFilter = null;
+            matchSearchQuery = '';
+            matchStatusFilter = 'all';
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('fab').classList.remove('hidden');
+            renderTournamentList();
+        }
+
+        function initRoomNavigation(id) {
+            const t = tournaments.find(x => x.id === id);
+            if (!t) return;
+
+            activeTournamentId = id;
+            if (t.hasPin) {
+                targetedLockedId = id;
+                document.getElementById('entered-pin').value = '';
+                document.getElementById('pin-modal').classList.remove('hidden');
+            } else {
+                isReadOnlyMode = false;
+                launchRoomView(t);
+            }
+        }
+
+        function launchRoomView(tournamentObj) {
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('detail-view').classList.remove('hidden');
+            document.getElementById('fab').classList.add('hidden');
+
+            document.getElementById('active-title').innerText = tournamentObj.name;
+            document.getElementById('active-format').innerText = tournamentObj.format;
+
+            currentTab = 'teams';
+            currentStageFilter = tournamentObj.stage || null;
+            matchSearchQuery = '';
+            matchStatusFilter = 'all';
+
+            renderTabsNav();
+            renderTabContent();
+            updateLastUpdatedLabel(tournamentObj.updatedAt);
+        }
+
+        function switchTab(tabId) {
+            currentTab = tabId;
+            preserveInputValues();
+            renderTabsNav();
+            renderTabContent();
+            restoreInputValues();
+        }
+
+        // ---------- REPORT PDF COMPILER ----------
+        async function exportPdfReport() {
+            const t = tournaments.find(x => x.id === activeTournamentId);
+            if (!t) return;
+
+            const pdfTitle = document.getElementById('pdf-title');
+            const pdfFormat = document.getElementById('pdf-format');
+            const pdfBody = document.getElementById('pdf-body');
+
+            pdfTitle.innerText = t.name.toUpperCase();
+            pdfFormat.innerText = `Tournament Format: ${t.format}`;
+            pdfBody.innerHTML = '';
+
+            let teamsList = t.teams ? Object.values(t.teams) : [];
+            let matchesList = t.matches ? Object.values(t.matches) : [];
+
+            if (t.format !== "Pure Knockout" && matchesList.length > 0) {
+                let sec = document.createElement('div');
+                sec.innerHTML = `<h2 style="font-size:14px;font-weight:900;color:#059669;margin-bottom:8px;text-transform:uppercase;">Current Standings</h2>`;
+                if (t.format.includes('Groups')) {
+                    const groupAssignments = t.groupAssignments || {};
+                    const groups = [...new Set(Object.values(groupAssignments))].sort();
+                    groups.forEach(gId => {
+                        let sorted = calculateStats(teamsList, matchesList, gId, groupAssignments);
+                        sec.innerHTML += `<h3 style="font-size:11px;font-weight:bold;margin:10px 0 4px;">Group Pool ${gId}</h3>` + buildStandingsTableTemplate(sorted);
+                    });
+                } else {
+                    let fullSorted = calculateStats(teamsList, matchesList);
+                    sec.innerHTML += buildStandingsTableTemplate(fullSorted);
+                }
+                pdfBody.appendChild(sec);
             }
 
             if (matchesList.length > 0) {
@@ -1107,149 +1545,174 @@
                     grid.innerHTML += `
                         <div style="padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:bold;">
                             <div style="color:#64748b;font-size:9px;margin-bottom:4px;text-transform:uppercase;">${m.stage} [${m.status}]</div>
-                            <table style="width:100%; border-collapse: collapse; font-size:11px; font-weight:bold;">
-                                <tr>
-                                    <td style="text-align:left; padding-bottom:2px;">${m.t1}</td>
-                                    <td style="text-align:right; padding-bottom:2px;">${s1}${p1Text}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align:left;">${m.t2}</td>
-                                    <td style="text-align:right;">${s2}${p2Text}</td>
-                                </tr>
-                            </table>
+                            <div style="display:flex;justify-content:between;"><span>${m.t1}</span><span>${s1}${p1Text}</span></div>
+                            <div style="display:flex;justify-content:between;margin-top:2px;"><span>${m.t2}</span><span>${s2}${p2Text}</span></div>
                         </div>`;
                 });
                 sec.appendChild(grid);
-                container.appendChild(sec);
+                pdfBody.appendChild(sec);
             }
 
-            let opt = {
-                margin:       10,
-                filename:     `eWAR_${a.name.replace(/\s+/g, '_')}_Report.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2 },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            const wrapper = document.getElementById('pdf-container');
+            wrapper.classList.remove('hidden');
+
+            const opt = {
+                margin: 0.5,
+                filename: `eWAR_Report_${t.name.replace(/\s+/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
 
-            html2pdf().set(opt).from(container).save().then(() => {
-                document.getElementById('export-pdf-btn').innerHTML = originalBtnHtml;
-                lucide.createIcons();
-            }).catch(() => {
-                document.getElementById('export-pdf-btn').innerHTML = originalBtnHtml;
-                showNotification("PDF Export Failed", "error");
-                lucide.createIcons();
-            });
-        };
+            try {
+                await html2pdf().set(opt).from(wrapper).save();
+                showNotification("PDF generated successfully.");
+            } catch (err) {
+                console.error(err);
+                showNotification("Failed to forge PDF document.", "error");
+            } finally {
+                wrapper.classList.add('hidden');
+            }
+        }
 
-        const setupModals = () => {
-            document.getElementById('fab').onclick = () => document.getElementById('create-modal').classList.remove('hidden');
-            document.getElementById('close-modal-btn').onclick = () => document.getElementById('create-modal').classList.add('hidden');
-            
-            document.getElementById('arena-format').onchange = (e) => {
-                const val = e.target.value;
-                const koWrap = document.getElementById('knockout-teams-wrapper');
-                const prioWrap = document.getElementById('table-topper-wrapper');
-                const lfWrap = document.getElementById('losers-final-wrapper');
-                
-                if (val.includes('Knockout')) {
-                    koWrap.classList.remove('hidden');
-                    lfWrap.classList.remove('hidden');
-                    if(val !== 'Pure Knockout') prioWrap.classList.remove('hidden');
-                    else prioWrap.classList.add('hidden');
+        // ---------- INTERACTION AND LOGIC INITIALIZATIONS ----------
+        document.addEventListener('DOMContentLoaded', () => {
+            initStorage();
+
+            const themeToggle = document.getElementById('theme-toggle');
+            themeToggle.onclick = () => {
+                document.documentElement.classList.toggle('dark');
+                localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            };
+            if (localStorage.getItem('theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+            }
+
+            document.getElementById('dashboard-link').onclick = showDashboard;
+            document.getElementById('back-to-dashboard').onclick = showDashboard;
+
+            const arenaSearchInput = document.getElementById('arena-search-input');
+            arenaSearchInput.oninput = (e) => {
+                arenaSearchQuery = e.target.value;
+                renderTournamentList();
+            };
+
+            const createModal = document.getElementById('create-modal');
+            document.getElementById('fab').onclick = () => createModal.classList.remove('hidden');
+            document.getElementById('close-modal-btn').onclick = () => createModal.classList.add('hidden');
+
+            const formatSelect = document.getElementById('arena-format');
+            const koWrapper = document.getElementById('knockout-teams-wrapper');
+            const losersWrapper = document.getElementById('losers-final-wrapper');
+            const prioritySeedingWrapper = document.getElementById('table-topper-wrapper');
+
+            formatSelect.onchange = () => {
+                let val = formatSelect.value;
+                if (val === "Pure Knockout" || val.includes("+ Knockout")) {
+                    koWrapper.classList.remove('hidden');
+                    losersWrapper.classList.remove('hidden');
+                    prioritySeedingWrapper.classList.remove('hidden');
                 } else {
-                    koWrap.classList.add('hidden');
-                    prioWrap.classList.add('hidden');
-                    lfWrap.classList.add('hidden');
+                    koWrapper.classList.add('hidden');
+                    losersWrapper.classList.add('hidden');
+                    prioritySeedingWrapper.classList.add('hidden');
                 }
             };
-            
+
             document.getElementById('create-tournament-btn').onclick = async () => {
                 const name = document.getElementById('arena-name').value.trim();
-                const format = document.getElementById('arena-format').value;
-                const koCount = parseInt(document.getElementById('arena-ko-count').value);
+                const format = formatSelect.value;
+                const koCount = document.getElementById('arena-ko-count').value;
+                const includeLosersFinal = document.getElementById('arena-losers-final').checked;
                 const prioritySeeding = document.getElementById('arena-priority-seeding').checked;
-                const losersFinal = document.getElementById('arena-losers-final').checked;
-                const pin = document.getElementById('arena-pin').value.trim();
-                
-                if(!name) { showNotification("Arena name required", "error"); return; }
-                
-                const id = `A${Date.now()}`;
-                const newArena = {
-                    id, name, format, koCount, prioritySeeding, losersFinal, pin,
-                    teams: [], matches: [], groups: {}, bracket: null,
-                    updatedAt: Date.now()
+                const pinRaw = document.getElementById('arena-pin').value.trim();
+
+                if (!name) return showNotification("Provide an authentic identity tag.", "error");
+
+                let hasPin = pinRaw.length > 0;
+                let pinHash = "";
+                if (hasPin) {
+                    const msgUint8 = new TextEncoder().encode(pinRaw);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+                    pinHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+                }
+
+                let newArena = {
+                    id: generateUUID(),
+                    name, format, koCount, includeLosersFinal, prioritySeeding, hasPin, pinHash,
+                    stage: STAGES.GROUPS, teams: {}, matches: [], groupAssignments: {},
+                    createdAt: Date.now(), updatedAt: Date.now()
                 };
+
+                await pushUpdateData(newArena);
+                createModal.classList.add('hidden');
+                document.getElementById('arena-name').value = '';
+                document.getElementById('arena-pin').value = '';
+                showNotification("Arena built cleanly inside live engine node.");
                 
-                document.getElementById('create-tournament-btn').innerText = "Creating...";
-                
-                try {
-                    await fetch(`${API_BASE}?namespace=${KV_NAMESPACE}&key=${DATA_VERSION}:${id}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(newArena)
-                    });
-                    
-                    arenas[id] = newArena;
-                    document.getElementById('create-modal').classList.add('hidden');
-                    document.getElementById('arena-name').value = "";
-                    document.getElementById('arena-pin').value = "";
-                    document.getElementById('create-tournament-btn').innerText = "Create Arena";
-                    
-                    showNotification("Arena Forged Successfully!");
-                    enterRoom(id, 'admin');
-                } catch (e) {
-                    showNotification("Failed to create arena on server.", "error");
-                    document.getElementById('create-tournament-btn').innerText = "Create Arena";
+                initRoomNavigation(newArena.id);
+            };
+
+            document.getElementById('spectate-btn').onclick = () => {
+                document.getElementById('pin-modal').classList.add('hidden');
+                isReadOnlyMode = true;
+                const t = tournaments.find(x => x.id === targetedLockedId);
+                if (t) launchRoomView(t);
+            };
+
+            document.getElementById('unlock-room-btn').onclick = async () => {
+                const inputPin = document.getElementById('entered-pin').value.trim();
+                const t = tournaments.find(x => x.id === targetedLockedId);
+                if (!t) return;
+
+                const msgUint8 = new TextEncoder().encode(inputPin);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+                const hashed = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+                if (hashed === t.pinHash) {
+                    document.getElementById('pin-modal').classList.add('hidden');
+                    isReadOnlyMode = false;
+                    launchRoomView(t);
+                    showNotification("Privileged access verified. System unlocked.");
+                } else {
+                    showNotification("Invalid entry pass code.", "error");
                 }
             };
 
-            document.getElementById('back-to-dashboard').onclick = () => {
-                activeId = null;
-                if(syncInterval) clearInterval(syncInterval);
-                document.getElementById('detail-view').classList.add('hidden');
-                document.getElementById('fab').classList.remove('hidden');
-                document.getElementById('dashboard-view').classList.remove('hidden');
-                fetchArenas();
-            };
-
-            document.getElementById('dashboard-link').onclick = () => {
-                if (activeId) document.getElementById('back-to-dashboard').click();
-            };
-            
-            document.getElementById('arena-search-input').onkeyup = renderList;
-
             document.getElementById('export-pdf-btn').onclick = exportPdfReport;
-            
+
             document.getElementById('reset-tournament-btn').onclick = () => {
-                showConfirm("Reset Arena Data?", "This will delete all matches, standings, and brackets. Teams will be kept.", () => {
-                    queueSave({ matches: [], groups: {}, bracket: initBracket(arenas[activeId].koCount || 4, arenas[activeId].format.includes("Groups")||arenas[activeId].format.includes("League")) });
-                    showNotification("Arena Reset Successfully.");
-                    switchTab('teams');
+                if (isReadOnlyMode) return;
+                triggerConfirm("Reset Match Progress?", "All recorded matches inside this specific arena layout will be permanently flushed.", async () => {
+                    const t = tournaments.find(x => x.id === activeTournamentId);
+                    if (t) {
+                        t.matches = [];
+                        t.stage = STAGES.GROUPS;
+                        t.groupAssignments = {};
+                        await pushUpdateData(t);
+                        currentStageFilter = STAGES.GROUPS;
+                        switchTab('teams');
+                        showNotification("Match schedules reset completed.");
+                    }
                 });
             };
 
             document.getElementById('delete-arena-btn').onclick = () => {
-                showConfirm("Annihilate Arena?", "This will permanently delete this tournament from the servers.", async () => {
-                    try {
-                        document.getElementById('delete-arena-btn').innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>`;
-                        await fetch(`${API_BASE}?namespace=${KV_NAMESPACE}&key=${DATA_VERSION}:${activeId}`, { method: 'DELETE' });
-                        delete arenas[activeId];
-                        showNotification("Arena Deleted.");
-                        document.getElementById('back-to-dashboard').click();
-                    } catch (e) {
-                        showNotification("Delete Failed.", "error");
-                        document.getElementById('delete-arena-btn').innerHTML = `<i data-lucide="trash-2" class="w-3 h-3"></i> Delete`;
-                        lucide.createIcons();
-                    }
+                if (isReadOnlyMode) return;
+                triggerConfirm("Purge This Arena?", "This operation cannot be undone. All logs inside the engine cluster will be wiped.", () => {
+                    deleteTournamentData(activeTournamentId);
                 });
             };
-        };
 
-        window.onload = () => {
-            setupModals();
-            fetchArenas();
-            setInterval(() => { if (!activeId) fetchArenas(true); }, 15000);
-        };
+            setInterval(() => {
+                if (activeTournamentId) {
+                    const currentActiveT = tournaments.find(x => x.id === activeTournamentId);
+                    if (currentActiveT) {
+                        updateLastUpdatedLabel(currentActiveT.updatedAt);
+                    }
+                }
+            }, 5000);
+        });
     </script>
 </body>
 </html>
