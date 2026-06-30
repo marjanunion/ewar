@@ -44,7 +44,7 @@
             border-color: #10b981 !important;
             box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
         }
-        input[type="number"] { -moz-appearance: textfield; }
+        input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .hidden { display: none !important; }
@@ -274,6 +274,8 @@
         let fbDb = null;
         let fbAppId = 'ewar-app';
         let currentUser = null;
+        let followSyncTimestamps = new Map();
+        let localUserId = null;
 
         // Search Queries and Filters State (Preserved during sync)
         let arenaSearchQuery = '';
@@ -357,7 +359,32 @@
         };
         
         const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2));
-        
+
+        function getCurrentUserId() {
+            if (currentUser && currentUser.uid) return currentUser.uid;
+            if (!localUserId) {
+                localUserId = localStorage.getItem('ewar_local_user_id');
+                if (!localUserId) {
+                    localUserId = generateUUID();
+                    localStorage.setItem('ewar_local_user_id', localUserId);
+                }
+            }
+            return localUserId;
+        }
+
+        function handleFollowedTournamentNotifications(newTournaments) {
+            const userId = getCurrentUserId();
+            newTournaments.forEach(t => {
+                const isFollowed = t.followers && t.followers.includes(userId);
+                if (!isFollowed) return;
+                const prevTimestamp = followSyncTimestamps.get(t.id);
+                if (prevTimestamp && t.updatedAt && t.updatedAt > prevTimestamp) {
+                    showNotification(`Update in followed arena: ${t.name}`, "success");
+                }
+                if (t.updatedAt) followSyncTimestamps.set(t.id, t.updatedAt);
+            });
+        }
+
         const fisherYates = (array) => {
             let m = array.length, t, i;
             while (m) {
@@ -440,6 +467,7 @@
                         preserveInputValues();
                         
                         tournaments = snapshot.docs.map(d => d.data());
+                        handleFollowedTournamentNotifications(tournaments);
                         
                         document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
                         document.getElementById('sync-text').innerText = "Live Engine Active";
@@ -482,7 +510,10 @@
                 document.getElementById('sync-text').innerText = "Local Mode";
                 
                 const localData = localStorage.getItem('ewar_tournaments');
-                if (localData) tournaments = JSON.parse(localData);
+                if (localData) {
+                    tournaments = JSON.parse(localData);
+                    handleFollowedTournamentNotifications(tournaments);
+                }
                 renderTournamentList();
             }
         }
@@ -502,6 +533,23 @@
                 renderTabContent();
                 updateLastUpdatedLabel(tournamentObj.updatedAt);
             }
+        }
+
+        async function toggleFollow(arenaId) {
+            const t = tournaments.find(x => x.id === arenaId);
+            if (!t) return;
+            if (!t.followers) t.followers = [];
+
+            const userId = getCurrentUserId();
+            if (t.followers.includes(userId)) {
+                t.followers = t.followers.filter(id => id !== userId);
+                showNotification(`Unfollowed ${t.name}`, "success");
+            } else {
+                t.followers.push(userId);
+                showNotification(`Following ${t.name}. You'll get updates!`, "success");
+            }
+            await pushUpdateData(t);
+            renderTournamentList();
         }
 
         async function deleteTournamentData(id) {
@@ -944,6 +992,8 @@
                 let matchesCount = t.matches ? Object.keys(t.matches).length : 0;
                 let teamsCount = t.teams ? Object.keys(t.teams).length : 0;
                 
+                const userId = getCurrentUserId();
+                const isFollowing = t.followers && t.followers.includes(userId);
                 card.innerHTML = `
                     <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-500/5 to-transparent rounded-bl-full"></div>
                     <div class="flex items-center gap-2">
@@ -955,9 +1005,23 @@
                         <span class="flex items-center gap-1"><i data-lucide="users" class="w-3.5 h-3.5 text-slate-500"></i> ${teamsCount} Enrolled</span>
                         <span class="flex items-center gap-1"><i data-lucide="swords" class="w-3.5 h-3.5 text-slate-500"></i> ${matchesCount} Matches</span>
                     </div>
+                    <button data-follow-btn class="follow-btn mt-4 text-[9px] font-black uppercase ${isFollowing ? 'text-amber-500 bg-amber-500/10' : 'text-emerald-500 bg-emerald-500/10'} px-3 py-1 rounded-lg hover:opacity-80 transition-colors">
+                        ${isFollowing ? 'Following' : 'Follow'}
+                    </button>
                 `;
-                card.onclick = () => initRoomNavigation(t.id);
+                card.onclick = (e) => {
+                    if (e.target && e.target.closest('[data-follow-btn]')) return;
+                    initRoomNavigation(t.id);
+                };
                 listEl.appendChild(card);
+
+                const followBtn = card.querySelector('[data-follow-btn]');
+                if (followBtn) {
+                    followBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleFollow(t.id);
+                    };
+                }
             });
             refreshIcons();
         }
@@ -1640,7 +1704,7 @@
                 let newArena = {
                     id: generateUUID(),
                     name, format, koCount, includeLosersFinal, prioritySeeding, hasPin, pinHash,
-                    stage: STAGES.GROUPS, teams: {}, matches: [], groupAssignments: {},
+                    stage: STAGES.GROUPS, teams: {}, matches: [], groupAssignments: {}, followers: [],
                     createdAt: Date.now(), updatedAt: Date.now()
                 };
 
