@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+    
+    function isOwner(userIdField) {
+      return isAuthenticated() && 
+             resource.data[userIdField] == request.auth.uid;
+    }
+    
+    function isFollowing(tournamentId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/artifacts/ewar-app/public/data/tournaments/$(tournamentId)/followers/$(request.auth.uid));
+    }
+    
+    // ============================================
+    // TOURNAMENTS COLLECTION
+    // ============================================
+    
+    match /artifacts/ewar-app/public/data/tournaments/{tournamentId} {
+      
+      // READ: Anyone can view tournaments (public)
+      allow read: if true;
+      
+      // CREATE: Only authenticated users can create
+      allow create: if isAuthenticated();
+      
+      // UPDATE: Only creators or followers can update
+      allow update: if isAuthenticated() && 
+        (isOwner('createdBy') || 
+         isFollowing(tournamentId));
+      
+      // DELETE: Only creators can delete
+      allow delete: if isAuthenticated() && 
+        isOwner('createdBy');
+      
+      // ============================================
+      // MATCHES SUBCOLLECTION
+      // ============================================
+      
+      match /matches/{matchId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && 
+          (isOwner('createdBy') || isFollowing(tournamentId));
+      }
+      
+      // ============================================
+      // FOLLOWERS SUBCOLLECTION
+      // ============================================
+      
+      match /followers/{userId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && 
+          request.auth.uid == userId;
+      }
+      
+      // ============================================
+      // TEAMS SUBCOLLECTION
+      // ============================================
+      
+      match /teams/{teamId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && 
+          (isOwner('createdBy') || isFollowing(tournamentId));
+      }
+    }
+    
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        request.auth.uid == userId;
+    }
+  }
+}

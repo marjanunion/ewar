@@ -1,0 +1,59 @@
+{
+  "rules": {
+    "public": {
+      ".read": true,
+      ".write": false
+    },
+    "tournaments": {
+      ".read": true,
+      ".write": "auth !== null",
+      "$tournamentId": {
+        ".write": "auth !== null && (data.child('createdBy').val() === auth.uid || root.child('tournaments/' + $tournamentId + '/followers/' + auth.uid).exists())",
+        ".validate": "newData.hasChildren(['id', 'name', 'format', 'stage', 'teams', 'matches', 'createdAt', 'updatedAt'])",
+        "matches": {
+          "$matchId": {
+            ".write": "auth !== null && (data.parent().parent().child('createdBy').val() === auth.uid || root.child('tournaments/' + data.parent().parent().key() + '/followers/' + auth.uid).exists())",
+            "s1": {
+              ".validate": "newData.isString() && newData.val().matches(/^[0-9]*$/)"
+            },
+            "s2": {
+              ".validate": "newData.isString() && newData.val().matches(/^[0-9]*$/)"
+            }
+          }
+        },
+        "followers": {
+          "$uid": {
+            ".write": "$uid === auth.uid"
+          }
+        },
+        "teams": {
+          "$teamId": {
+            ".write": "auth !== null && (data.parent().parent().child('createdBy').val() === auth.uid || root.child('tournaments/' + data.parent().parent().key() + '/followers/' + auth.uid).exists())"
+          }
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "presence": {
+      ".read": "auth !== null",
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "chat": {
+      "$tournamentId": {
+        ".read": "auth !== null",
+        ".write": "auth !== null",
+        "$messageId": {
+          ".validate": "newData.hasChildren(['userId', 'text', 'timestamp'])",
+          ".write": "auth !== null && newData.child('userId').val() === auth.uid"
+        }
+      }
+    }
+  }
+}

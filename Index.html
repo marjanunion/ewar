@@ -263,6 +263,7 @@
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 
         // Application State
         let tournaments = [];
@@ -274,6 +275,8 @@
         let fbDb = null;
         let fbAppId = 'ewar-app';
         let currentUser = null;
+        let messaging = null;
+        let currentFcmToken = null;
         let followSyncTimestamps = new Map();
         let localUserId = null;
 
@@ -359,6 +362,85 @@
         };
         
         const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2));
+
+                // New push notification setup using Firebase Messaging V1 and VAPID
+                async function setupPushNotifications() {
+                    try {
+                        if (!('serviceWorker' in navigator)) {
+                            console.warn('Service workers not supported');
+                            return false;
+                        }
+
+                        if (!('Notification' in window)) {
+                            console.warn('Notifications not supported');
+                            return false;
+                        }
+
+                        const registration = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+                        console.log('Service Worker registered:', registration);
+
+                        let permission = Notification.permission;
+                        if (permission === 'default') {
+                            permission = await Notification.requestPermission();
+                        }
+
+                        if (permission !== 'granted') {
+                            console.warn('Notification permission denied');
+                            return false;
+                        }
+
+                        // Get FCM token - REPLACE THIS WITH YOUR ACTUAL VAPID KEY
+                        const VAPID_KEY = 'YOUR_ACTUAL_VAPID_KEY_FROM_FIREBASE_CONSOLE';
+                        currentFcmToken = await getToken(messaging, {
+                            vapidKey: VAPID_KEY,
+                            serviceWorkerRegistration: registration
+                        });
+
+                        console.log('FCM token obtained:', currentFcmToken);
+
+                        // Listen for foreground messages
+                        onMessage(messaging, (payload) => {
+                            console.log('Foreground message received:', payload);
+                            const title = payload.notification?.title || payload.data?.title || 'eWAR Update';
+                            const body = payload.notification?.body || payload.data?.body || 'Arena update available.';
+                            const url = payload.data?.url || '/';
+
+                            showNotification(body, 'success');
+
+                            if (Notification.permission === 'granted') {
+                                navigator.serviceWorker.getRegistration().then(reg => {
+                                    if (reg) {
+                                        reg.showNotification(title, { 
+                                            body, 
+                                            icon: '/icon.png',
+                                            data: { url }
+                                        });
+                                    }
+                                });
+                            }
+                        });
+
+                        return true;
+                    } catch (error) {
+                        console.error('Push notification setup failed:', error);
+                        return false;
+                    }
+                }
+
+                // Save FCM token to Firestore for server-side notifications
+                async function saveFcmToken(userId, token) {
+                    try {
+                        if (!fbDb || !userId) return;
+                        const userRef = doc(fbDb, 'users', userId);
+                        await setDoc(userRef, {
+                            fcmToken: token,
+                            updatedAt: Date.now()
+                        }, { merge: true });
+                        console.log('FCM token saved for user:', userId);
+                    } catch (error) {
+                        console.error('Failed to save FCM token:', error);
+                    }
+                }
 
         function getCurrentUserId() {
             if (currentUser && currentUser.uid) return currentUser.uid;
@@ -453,12 +535,21 @@
                 
                 fbDb = getFirestore(app);
                 fbAppId = 'ewar-app';
+                messaging = getMessaging(app);
+
+                // Set up push notifications (register SW, request permission, get token)
+                await setupPushNotifications();
 
                 await signInAnonymously(auth);
                 
-                onAuthStateChanged(auth, (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     currentUser = user;
                     if (!currentUser) return;
+
+                    // After authentication, ensure token is saved
+                    if (currentFcmToken) {
+                        await saveFcmToken(currentUser.uid, currentFcmToken);
+                    }
 
                     const tourneyRef = collection(fbDb, 'artifacts', fbAppId, 'public', 'data', 'tournaments');
                     
